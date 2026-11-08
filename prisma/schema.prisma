@@ -1,0 +1,279 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  name               String
+  role               String    @default("OWNER_ADMIN")
+  passwordHash       String
+  recoveryPinHash    String?
+  resetToken         String?
+  resetTokenExpiry   DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model CompanyProfile {
+  id                  String   @id @default("hezlon-singleton")
+  companyName         String   @default("HEZLON Building Solutions")
+  professionalTitle   String   @default("Aluminium & Glass Specialists")
+  phone               String   @default("0673 571 344")
+  whatsapp            String   @default("0673 571 344")
+  email               String   @default("Casrycasry40@gmail.com")
+  description         String   @default("HEZLON Building Solutions provides professional aluminium, glass, interior fitting and general building improvement services. We focus on quality workmanship, creativity, reliability and customer satisfaction.")
+  descriptionSw       String   @default("HEZLON Building Solutions inatoa huduma za kitaalamu za aluminium, vioo, mapambo ya ndani na maboresho mbalimbali ya majengo. Tunazingatia ubora wa kazi, ubunifu, uaminifu na kuridhika kwa wateja.")
+  location            String   @default("Dodoma, Tanzania.")
+  serviceArea         String   @default("Tanzania – Tunapokea kazi kutoka maeneo mbalimbali nchini.")
+  instagram           String   @default("https://www.instagram.com/hezlon_building_solution?cplk=MWJzNDZ2NG0xNmswZg==")
+  facebook            String   @default("https://www.facebook.com/share/1CXYh7WkFm/")
+  website             String   @default("")
+  physicalAddress     String   @default("")
+  workingHours        String   @default("")
+  logoUrl             String   @default("")
+  ownerPhotoUrl       String   @default("")
+  coverImageUrl       String   @default("")
+  galleryImagesJson   String   @default("[]")
+  defaultWidthMm      Float    @default(90)
+  defaultHeightMm     Float    @default(50)
+  defaultBleedMm      Float    @default(3)
+  defaultSafeMarginMm Float    @default(5)
+  notifyOnQrScan      Boolean  @default(true)
+  notifyOnPrintOrder  Boolean  @default(true)
+  updatedAt           DateTime @updatedAt
+}
+
+model DigitalProfile {
+  id              String   @id @default("hezlon-digital-profile")
+  slug            String   @unique @default("hezlon")
+  isPublished     Boolean  @default(true)
+  headline        String   @default("Architectural Aluminium & Precision Glass Solutions")
+  themeMode       String   @default("FOREST_LUXURY")
+  accentColor     String   @default("#C9A96E")
+  primaryColor    String   @default("#0D2B22")
+  showServices    Boolean  @default(true)
+  showGallery     Boolean  @default(true)
+  showSocialLinks Boolean  @default(true)
+  showWorkingHours Boolean @default(true)
+  showLocation    Boolean  @default(true)
+  enableVCard     Boolean  @default(true)
+  enableWhatsApp  Boolean  @default(true)
+  updatedAt       DateTime @updatedAt
+}
+
+model CompanyService {
+  id            String   @id @default(cuid())
+  title         String
+  titleSw       String   @default("")
+  description   String
+  descriptionSw String   @default("")
+  category      String   @default("Architectural Glazing & Aluminium")
+  imageUrl      String   @default("")
+  iconName      String   @default("Building2")
+  displayOrder  Int      @default(0)
+  isPublished   Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model CardTemplate {
+  id                String   @id @default(cuid())
+  slug              String   @unique
+  name              String
+  category          String
+  description       String
+  widthMm           Float    @default(90)
+  heightMm          Float    @default(50)
+  isDoubleSided     Boolean  @default(true)
+  paperFinish       String   @default("MATTE")
+  cornerStyle       String   @default("SQUARE")
+  frontBgJson       String
+  backBgJson        String
+  frontElementsJson String
+  backElementsJson  String
+  accentColor       String   @default("#C9A96E")
+  previewPaletteJson String  @default("[\"#0D2B22\",\"#C9A96E\",\"#F8F5EE\"]")
+  isFeatured        Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  designs           BusinessCardDesign[]
+}
+
+model BusinessCardDesign {
+  id                 String        @id @default(cuid())
+  name               String
+  templateId         String?
+  template           CardTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  widthMm            Float         @default(90)
+  heightMm           Float         @default(50)
+  bleedMm            Float         @default(3)
+  safeMarginMm       Float         @default(5)
+  isDoubleSided      Boolean       @default(true)
+  paperFinish        String        @default("MATTE")
+  cornerStyle        String        @default("SQUARE")
+  frontBgJson        String
+  backBgJson         String
+  frontElementsJson  String
+  backElementsJson   String
+  status             String        @default("DRAFT")
+  notes              String        @default("")
+  lastValidationJson String        @default("{}")
+  isFavorite         Boolean       @default(false)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  elements           CardElement[]
+  printOrders        PrintOrder[]
+}
+
+model CardElement {
+  id          String             @id @default(cuid())
+  designId    String
+  design      BusinessCardDesign @relation(fields: [designId], references: [id], onDelete: Cascade)
+  side        String             @default("FRONT")
+  elementType String
+  label       String             @default("")
+  xMm         Float              @default(0)
+  yMm         Float              @default(0)
+  widthMm     Float              @default(20)
+  heightMm    Float              @default(10)
+  rotation    Float              @default(0)
+  zIndex      Int                @default(1)
+  propsJson   String             @default("{}")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model QRCode {
+  id                   String   @id @default("hezlon-permanent-qr")
+  slug                 String   @unique @default("hezlon")
+  customBaseDomain     String   @default("")
+  foregroundColor      String   @default("#0D2B22")
+  backgroundColor      String   @default("#FFFFFF")
+  accentFrameColor     String   @default("#C9A96E")
+  errorCorrectionLevel String   @default("H")
+  marginModules        Int      @default(4)
+  sizePx               Int      @default(1024)
+  includeCenterLogo    Boolean  @default(false)
+  centerLogoText       String   @default("H")
+  centerLogoUrl        String   @default("")
+  stylePreset          String   @default("CLASSIC_LUXURY")
+  isActive             Boolean  @default(true)
+  lastTestedAt         DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  scans                QRScan[]
+}
+
+model PrintProvider {
+  id            String       @id @default(cuid())
+  name          String
+  contactPerson String       @default("")
+  phone         String       @default("")
+  email         String       @default("")
+  address       String       @default("")
+  website       String       @default("")
+  notes         String       @default("")
+  isDefault     Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  orders        PrintOrder[]
+}
+
+model PrintPricingConfig {
+  id                    String   @id @default("hezlon-pricing-singleton")
+  currency              String   @default("USD")
+  currencySymbol        String   @default("$")
+  baseUnitCostMatte     Float    @default(0.35)
+  baseUnitCostGloss     Float    @default(0.38)
+  baseUnitCostSoftTouch Float    @default(0.48)
+  baseUnitCostTextured  Float    @default(0.55)
+  roundedCornerSurcharge Float   @default(0.05)
+  doubleSidedMultiplier Float    @default(1.25)
+  setupFee              Float    @default(15.00)
+  bulkDiscount100       Float    @default(0.05)
+  bulkDiscount500       Float    @default(0.15)
+  bulkDiscount1000      Float    @default(0.25)
+  updatedAt             DateTime @updatedAt
+}
+
+model PrintOrder {
+  id                   String              @id @default(cuid())
+  orderReference       String              @unique
+  designId             String?
+  design               BusinessCardDesign? @relation(fields: [designId], references: [id], onDelete: SetNull)
+  designNameSnapshot   String
+  designSnapshotJson   String              @default("{}")
+  widthMm              Float               @default(90)
+  heightMm             Float               @default(50)
+  bleedMm              Float               @default(3)
+  safeMarginMm         Float               @default(5)
+  quantity             Int                 @default(100)
+  paperFinish          String              @default("MATTE")
+  paperWeightGsm       Int                 @default(400)
+  cornerStyle          String              @default("SQUARE")
+  isDoubleSided        Boolean             @default(true)
+  colorSpace           String              @default("CMYK_READY")
+  unitPrice            Float               @default(0.45)
+  setupFee             Float               @default(15.00)
+  totalCost            Float               @default(60.00)
+  currency             String              @default("USD")
+  printProviderId      String?
+  printProvider        PrintProvider?      @relation(fields: [printProviderId], references: [id], onDelete: SetNull)
+  providerNameSnapshot String              @default("External Commercial Print Studio")
+  status               String              @default("DRAFT")
+  deliveryMethod       String              @default("COLLECTION")
+  deliveryNotes        String              @default("")
+  productionNotes      String              @default("")
+  approvedAt           DateTime?
+  sentToPrinterAt      DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  items                PrintOrderItem[]
+}
+
+model PrintOrderItem {
+  id          String     @id @default(cuid())
+  orderId     String
+  order       PrintOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Int
+  unitPrice   Float
+  totalPrice  Float
+}
+
+model QRScan {
+  id             String   @id @default(cuid())
+  qrCodeId       String   @default("hezlon-permanent-qr")
+  qrCode         QRCode   @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+  visitorHash    String
+  deviceCategory String   @default("MOBILE")
+  osName         String   @default("Unknown")
+  browserName    String   @default("Unknown")
+  country        String   @default("Local / Direct")
+  city           String   @default("Unknown")
+  referrer       String   @default("QR_SCAN")
+  isUniqueDaily  Boolean  @default(true)
+  scannedAt      DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String
+  entityId   String   @default("")
+  summary    String
+  ipAddress  String   @default("127.0.0.1")
+  createdAt  DateTime @default(now())
+}
+

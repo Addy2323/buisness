@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" width="480" height="320">
+  <defs>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E8CA82" />
+      <stop offset="50%" stop-color="#C9A24D" />
+      <stop offset="100%" stop-color="#9A742B" />
+    </linearGradient>
+    <linearGradient id="whiteGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#E5E7EB" />
+    </linearGradient>
+  </defs>
+
+  <!-- Left Gold Pitched Roof & House Wing -->
+  <polygon points="36,96 105,36 105,60 88,74 88,142 56,142 56,80" fill="url(#goldGrad)" />
+  <!-- Left Roof Overhang Accent -->
+  <polygon points="28,96 105,28 105,36 36,96" fill="#E8CA82" />
+
+  <!-- 2x2 Window Grid inside Left House Wing -->
+  <rect x="65" y="92" width="7" height="7" fill="#09261E" />
+  <rect x="75" y="92" width="7" height="7" fill="#09261E" />
+  <rect x="65" y="102" width="7" height="7" fill="#09261E" />
+  <rect x="75" y="102" width="7" height="7" fill="#09261E" />
+
+  <!-- Small Outer Left Window Panes -->
+  <rect x="44" y="100" width="6" height="6" fill="url(#goldGrad)" />
+  <rect x="44" y="109" width="6" height="6" fill="url(#goldGrad)" />
+
+  <!-- Center White Monolith Tower with Angled Peak -->
+  <polygon points="109,16 128,32 128,142 109,142" fill="url(#whiteGrad)" />
+  <polygon points="113,12 122,20 122,28 113,20" fill="#FFFFFF" />
+
+  <!-- Right Gold Architectural Skyscraper & Slanted Wing -->
+  <polygon points="134,42 152,55 152,142 134,142" fill="url(#goldGrad)" />
+  <!-- Skyscraper Vertical Mullion Lines -->
+  <rect x="139" y="56" width="2.5" height="80" fill="#09261E" />
+  <rect x="145" y="60" width="2.5" height="76" fill="#09261E" />
+
+  <!-- Rightmost Angled Roof & Base Extension -->
+  <polygon points="156,64 176,80 176,128 202,142 156,142" fill="url(#goldGrad)" />
+  <rect x="161" y="78" width="3" height="56" fill="#09261E" />
+  <rect x="168" y="84" width="3" height="50" fill="#09261E" />
+</svg>
+
