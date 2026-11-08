@@ -12,8 +12,7 @@
 .env
 .env*.local
 
-# Prisma SQLite databases & journals
-prisma/*.db
+# Prisma SQLite temporary journals (keep prisma/hezlon.db tracked)
 prisma/*.db-journal
 prisma/*.db-wal
 prisma/*.db-shm
