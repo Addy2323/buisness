@@ -13,7 +13,9 @@ import {
   renderCardSideSvg,
   validateCardForPrint,
 } from "../src/lib/print-engine";
+import { buildQrMatrix } from "../src/lib/use-qr-matrix";
 import { HEZLON_TEMPLATES } from "../src/lib/templates-catalog";
+import sharp from "sharp";
 
 async function runVerification() {
   console.log("=== HEZLON BUSINESS CARD STUDIO — QR & DIGITAL PROFILE VERIFICATION ===");
@@ -166,15 +168,25 @@ async function runVerification() {
     `✔ [PASS 4/10] Permanent QR generated in SVG & 1024px PNG (${qrPngBuf.length} bytes, Contrast ${contrast}:1, Quiet Zone 4 modules, Level H).`
   );
 
-  // 5. Decode the Generated QR Code Optically using jsQR + Sharp
+  // 5. Decode the Generated QR Code Optically using jsQR + Sharp (Both server QR & Studio Canvas QR Matrix)
   const decodedUrl = await decodeQrFromPngBuffer(qrPngBuf);
   if (decodedUrl !== permanentProfileUrl) {
     throw new Error(
       `QR Optical Decode mismatch! Expected "${permanentProfileUrl}", got "${decodedUrl}"`
     );
   }
+  const prodUrl = "https://hezlon.lumo.co.tz/hezlon";
+  const canvasMatrix = buildQrMatrix(prodUrl);
+  const canvasQrSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 ${canvasMatrix.size + 4} ${canvasMatrix.size + 4}" width="600" height="600" shape-rendering="crispEdges"><rect x="-2" y="-2" width="${canvasMatrix.size + 4}" height="${canvasMatrix.size + 4}" fill="#FFFFFF"/><path d="${canvasMatrix.path}" fill="#111111"/></svg>`;
+  const canvasQrPng = await sharp(Buffer.from(canvasQrSvg)).png().toBuffer();
+  const decodedCanvasUrl = await decodeQrFromPngBuffer(canvasQrPng);
+  if (decodedCanvasUrl !== prodUrl) {
+    throw new Error(
+      `Studio Canvas QR Optical Decode mismatch! Expected "${prodUrl}", got "${decodedCanvasUrl}"`
+    );
+  }
   console.log(
-    `✔ [PASS 5/10] Optical QR Decode Test (jsQR) succeeded! Decoded URL: "${decodedUrl}"`
+    `✔ [PASS 5/10] Optical QR Decode Test (jsQR) succeeded! Server QR: "${decodedUrl}" | Studio Live Canvas QR: "${decodedCanvasUrl}"`
   );
 
   // 6. Verify Updating Company Information Does NOT Change Permanent QR Code

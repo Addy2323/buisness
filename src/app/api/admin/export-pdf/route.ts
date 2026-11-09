@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { logAuditEvent, requireAdminApi } from "@/lib/auth";
+import { resolveQrDestinationUrl } from "@/lib/qr-destination";
 import {
   CardPrintSpec,
   generatePrintReadyPdf,
@@ -31,15 +32,11 @@ export async function POST(req: NextRequest) {
       where: { id: "hezlon-permanent-qr" },
     });
 
-    const host = req.headers.get("host") || "localhost:3000";
-    const proto = host.includes("localhost") ? "http" : "https";
-    const baseDomain =
-      qrConfig?.customBaseDomain?.trim() ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      `${proto}://${host}`;
-    const qrDestinationUrl = `${baseDomain.replace(/\/+$/, "")}/${
-      qrConfig?.slug || "hezlon"
-    }`;
+    const qrDestinationUrl = resolveQrDestinationUrl(
+      req.headers,
+      qrConfig?.customBaseDomain,
+      qrConfig?.slug
+    );
 
     let spec: CardPrintSpec;
 

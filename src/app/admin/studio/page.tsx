@@ -998,9 +998,9 @@ function StudioEditorContent() {
                           yMm: 14,
                           widthMm: 20,
                           heightMm: 20,
-                          qrForeground: "#0D2B22",
+                          qrForeground: "#111111",
                           qrBackground: "#FFFFFF",
-                          qrIncludeLogo: true,
+                          qrIncludeLogo: false,
                           qrFrameStyle: "thin-gold",
                         })
                       }

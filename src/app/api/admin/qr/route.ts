@@ -4,6 +4,7 @@ import path from "path";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { logAuditEvent, requireAdminApi } from "@/lib/auth";
+import { resolveQrDestinationUrl } from "@/lib/qr-destination";
 import {
   checkColorContrast,
   decodeQrFromPngBuffer,
@@ -31,19 +32,7 @@ function buildPermanentDestinationUrl(
   customBaseDomain: string,
   slug: string
 ): string {
-  const cleanSlug = (slug || "hezlon").replace(/^\/+/, "");
-  if (customBaseDomain && customBaseDomain.trim().length > 0) {
-    const base = customBaseDomain.trim().replace(/\/+$/, "");
-    const withProtocol = base.startsWith("http") ? base : `https://${base}`;
-    return `${withProtocol}/${cleanSlug}`;
-  }
-  const envBase = process.env.NEXT_PUBLIC_APP_URL;
-  if (envBase && !envBase.includes("localhost")) {
-    return `${envBase.replace(/\/+$/, "")}/${cleanSlug}`;
-  }
-  const host = req.headers.get("host") || "localhost:3000";
-  const proto = host.includes("localhost") ? "http" : "https";
-  return `${proto}://${host}/${cleanSlug}`;
+  return resolveQrDestinationUrl(req.headers, customBaseDomain, slug);
 }
 
 async function persistPublicQrAssets(svg: string, pngBuffer: Buffer) {

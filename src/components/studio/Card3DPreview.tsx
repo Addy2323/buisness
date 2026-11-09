@@ -10,6 +10,7 @@ import {
   PaperFinish,
 } from "@/types/studio";
 import { resolveElementText } from "./CardCanvasRenderer";
+import { QrMatrix, usePermanentQrMatrix } from "@/lib/use-qr-matrix";
 import { RotateCcw, FlipHorizontal, Sparkles, Pause, Play } from "lucide-react";
 
 interface Card3DPreviewProps {
@@ -33,7 +34,8 @@ function paintCardSideToCanvas(
   elements: CanvasElement[],
   paperFinish: PaperFinish,
   companyInfo?: Partial<CompanyInfoState>,
-  loadedImages?: Map<string, HTMLImageElement>
+  loadedImages?: Map<string, HTMLImageElement>,
+  qrMatrix?: QrMatrix
 ): HTMLCanvasElement {
   const scale = 12; // 12 px per mm => 1080 x 600 high-res texture
   const canvas = document.createElement("canvas");
@@ -310,58 +312,33 @@ function paintCardSideToCanvas(
           }
         }
       }
-    } else if (el.type === "qr") {
+    } else if (el.type === "qr" && qrMatrix) {
       ctx.fillStyle = el.qrBackground || "#FFFFFF";
-      ctx.fillRect(x - 4, y - 4, w + 8, h + 8);
+      ctx.fillRect(x, y, w, h);
       if (
         el.qrFrameStyle === "thin-gold" ||
         el.qrFrameStyle === "rounded-gold"
       ) {
         ctx.strokeStyle = "#C9A96E";
         ctx.lineWidth = 3;
-        ctx.strokeRect(x - 4, y - 4, w + 8, h + 8);
+        ctx.strokeRect(x, y, w, h);
       }
-      const cells = 21;
-      const cellW = w / cells;
+      const quiet = 2;
+      const totalModules = qrMatrix.size + quiet * 2;
+      const cellW = w / totalModules;
+      const cellH = h / totalModules;
       ctx.fillStyle = el.qrForeground || "#0D2B22";
-      const drawFinder = (fx: number, fy: number) => {
-        ctx.fillRect(fx, fy, cellW * 7, cellW * 7);
-        ctx.fillStyle = el.qrBackground || "#FFFFFF";
-        ctx.fillRect(fx + cellW, fy + cellW, cellW * 5, cellW * 5);
-        ctx.fillStyle = el.qrForeground || "#0D2B22";
-        ctx.fillRect(fx + cellW * 2, fy + cellW * 2, cellW * 3, cellW * 3);
-      };
-      drawFinder(x, y);
-      drawFinder(x + cellW * 14, y);
-      drawFinder(x, y + cellW * 14);
-
-      for (let r = 0; r < cells; r++) {
-        for (let c = 0; c < cells; c++) {
-          const inTL = r < 8 && c < 8;
-          const inTR = r < 8 && c > 12;
-          const inBL = r > 12 && c < 8;
-          if (!inTL && !inTR && !inBL && (r * 7 + c * 13) % 3 === 0) {
-            ctx.fillRect(x + c * cellW, y + r * cellW, cellW * 0.9, cellW * 0.9);
+      for (let r = 0; r < qrMatrix.size; r++) {
+        for (let c = 0; c < qrMatrix.size; c++) {
+          if (qrMatrix.isDark(r, c)) {
+            ctx.fillRect(
+              Math.floor(x + (c + quiet) * cellW),
+              Math.floor(y + (r + quiet) * cellH),
+              Math.ceil(cellW),
+              Math.ceil(cellH)
+            );
           }
         }
-      }
-      if (el.qrIncludeLogo !== false) {
-        const badgeW = w * 0.24;
-        ctx.fillStyle = el.qrForeground || "#0D2B22";
-        ctx.fillRect(x + (w - badgeW) / 2, y + (h - badgeW) / 2, badgeW, badgeW);
-        ctx.strokeStyle = "#C9A96E";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(
-          x + (w - badgeW) / 2,
-          y + (h - badgeW) / 2,
-          badgeW,
-          badgeW
-        );
-        ctx.fillStyle = "#C9A96E";
-        ctx.font = `bold ${Math.round(badgeW * 0.65)}px Georgia, serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("H", x + w / 2, y + h / 2 + 1);
       }
     } else if (el.type === "text") {
       const rawText = resolveElementText(el, companyInfo);
@@ -433,6 +410,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({
   className = "",
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
+  const qrMatrix = usePermanentQrMatrix();
   const [targetFlipY, setTargetFlipY] = useState(0);
   const [autoRotate, setAutoRotate] = useState(false);
   const [showingSide, setShowingSide] = useState<"FRONT" | "BACK">("FRONT");
@@ -550,7 +528,8 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({
       frontElements,
       paperFinish,
       companyInfo,
-      loadedImages
+      loadedImages,
+      qrMatrix
     );
     const backCanvas = paintCardSideToCanvas(
       widthMm,
@@ -559,7 +538,8 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({
       isDoubleSided ? backElements : [],
       paperFinish,
       companyInfo,
-      loadedImages
+      loadedImages,
+      qrMatrix
     );
 
     const frontTex = new THREE.CanvasTexture(frontCanvas);
@@ -704,6 +684,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({
     cornerStyle,
     companyInfo,
     loadedImages,
+    qrMatrix,
   ]);
 
   return (
