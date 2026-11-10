@@ -88,8 +88,8 @@ export default function MyDesignsPage() {
     mode: "PREVIEW" | "PRINT_READY" = "PREVIEW"
   ) => {
     setBusyId(`${design.id}-${mode}`);
+    const format = mode === "PREVIEW" ? "PDF_PREVIEW" : "PDF_PRINT_READY";
     try {
-      const format = mode === "PREVIEW" ? "PDF_PREVIEW" : "PDF_PRINT_READY";
       const res = await fetch("/api/admin/export-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -107,9 +107,19 @@ export default function MyDesignsPage() {
         a.download = `${design.name
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")}-${suffix}.pdf`;
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        setTimeout(() => {
+          try {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          } catch {}
+        }, 60000);
+      } else {
+        window.location.href = `/api/admin/export-pdf?designId=${encodeURIComponent(design.id)}&format=${encodeURIComponent(format)}&disposition=attachment`;
       }
+    } catch {
+      window.location.href = `/api/admin/export-pdf?designId=${encodeURIComponent(design.id)}&format=${encodeURIComponent(format)}&disposition=attachment`;
     } finally {
       setBusyId(null);
     }

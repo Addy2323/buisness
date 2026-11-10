@@ -273,8 +273,8 @@ function PrintOrdersContent() {
     mode: "PREVIEW" | "PRINT_READY" = "PRINT_READY"
   ) => {
     setDownloadingId(`${order.id}-${mode}`);
+    const format = mode === "PREVIEW" ? "PDF_PREVIEW" : "PDF_PRINT_READY";
     try {
-      const format = mode === "PREVIEW" ? "PDF_PREVIEW" : "PDF_PRINT_READY";
       const res = await fetch("/api/admin/export-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -290,9 +290,19 @@ function PrintOrdersContent() {
         a.href = url;
         const suffix = mode === "PREVIEW" ? "preview" : "a4-print-ready";
         a.download = `${order.orderReference}-${suffix}.pdf`;
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        setTimeout(() => {
+          try {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          } catch {}
+        }, 60000);
+      } else {
+        window.location.href = `/api/admin/export-pdf?orderId=${encodeURIComponent(order.id)}&format=${encodeURIComponent(format)}&disposition=attachment`;
       }
+    } catch {
+      window.location.href = `/api/admin/export-pdf?orderId=${encodeURIComponent(order.id)}&format=${encodeURIComponent(format)}&disposition=attachment`;
     } finally {
       setDownloadingId(null);
     }

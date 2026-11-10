@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { logAuditEvent, requireAdminApi } from "@/lib/auth";
 import { resolveQrDestinationUrl } from "@/lib/qr-destination";
+import { HEZLON_TEMPLATES } from "@/lib/templates-catalog";
 import {
   CardPrintSpec,
   DuplexFlipMode,
@@ -12,6 +13,168 @@ import {
   renderCardSideSvg,
   validateCardForPrint,
 } from "@/lib/print-engine";
+
+export async function GET(req: NextRequest) {
+  const session = await requireAdminApi(req);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { searchParams } = new URL(req.url);
+    const designId = searchParams.get("designId");
+    const orderId = searchParams.get("orderId");
+    const format = (searchParams.get("format") || "PDF_PRINT_READY") as
+      | "PDF_PREVIEW"
+      | "PDF_PREVIEW_FRONT"
+      | "PDF_PREVIEW_BACK"
+      | "PDF_PRINT_READY"
+      | "PDF_COMPLETE"
+      | "PDF_FRONT"
+      | "PDF_BACK"
+      | "PNG_FRONT"
+      | "PNG_BACK"
+      | "SVG_FRONT"
+      | "SVG_BACK";
+
+    const flipMode: DuplexFlipMode =
+      searchParams.get("flipMode") === "SHORT_EDGE" ? "SHORT_EDGE" : "LONG_EDGE";
+    const dispositionType: "inline" | "attachment" =
+      searchParams.get("disposition") === "inline" ? "inline" : "attachment";
+
+    const qrConfig = await prisma.qRCode.findUnique({
+      where: { id: "hezlon-permanent-qr" },
+    });
+
+    const qrDestinationUrl = resolveQrDestinationUrl(
+      req.headers,
+      qrConfig?.customBaseDomain,
+      qrConfig?.slug
+    );
+
+    let spec: CardPrintSpec;
+
+    if (orderId) {
+      const order = await prisma.printOrder.findUnique({
+        where: { id: orderId },
+        include: { design: true },
+      });
+      if (!order) {
+        return NextResponse.json({ error: "Print order not found" }, { status: 404 });
+      }
+      const snapshot = JSON.parse(order.designSnapshotJson || "{}");
+      const d = order.design;
+      spec = {
+        designName: order.designNameSnapshot,
+        widthMm: order.widthMm,
+        heightMm: order.heightMm,
+        bleedMm: order.bleedMm,
+        safeMarginMm: order.safeMarginMm,
+        isDoubleSided: order.isDoubleSided,
+        paperFinish: order.paperFinish,
+        cornerStyle: order.cornerStyle,
+        frontBg: snapshot.frontBg || (d ? JSON.parse(d.frontBgJson) : { type: "solid", primaryColor: "#0D2B22" }),
+        backBg: snapshot.backBg || (d ? JSON.parse(d.backBgJson) : { type: "solid", primaryColor: "#F8F5EE" }),
+        frontElements: snapshot.frontElements || (d ? JSON.parse(d.frontElementsJson) : []),
+        backElements: snapshot.backElements || (d ? JSON.parse(d.backElementsJson) : []),
+        qrDestinationUrl,
+      };
+    } else {
+      let d = designId
+        ? await prisma.businessCardDesign.findUnique({ where: { id: designId } })
+        : await prisma.businessCardDesign.findFirst();
+
+      if (d) {
+        spec = {
+          designName: d.name,
+          widthMm: d.widthMm,
+          heightMm: d.heightMm,
+          bleedMm: d.bleedMm,
+          safeMarginMm: d.safeMarginMm,
+          isDoubleSided: d.isDoubleSided,
+          paperFinish: d.paperFinish,
+          cornerStyle: d.cornerStyle,
+          frontBg: JSON.parse(d.frontBgJson),
+          backBg: JSON.parse(d.backBgJson),
+          frontElements: JSON.parse(d.frontElementsJson),
+          backElements: JSON.parse(d.backElementsJson),
+          qrDestinationUrl,
+        };
+      } else {
+        const tpl = HEZLON_TEMPLATES[0];
+        spec = {
+          designName: tpl.name,
+          widthMm: 90,
+          heightMm: 50,
+          bleedMm: 3,
+          safeMarginMm: 5,
+          isDoubleSided: true,
+          paperFinish: tpl.paperFinish,
+          cornerStyle: tpl.cornerStyle,
+          frontBg: tpl.frontBg,
+          backBg: tpl.backBg,
+          frontElements: tpl.frontElements,
+          backElements: tpl.backElements,
+          qrDestinationUrl,
+        };
+      }
+    }
+
+    const cleanFileName = spec.designName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    const isPreviewFormat =
+      format === "PDF_PREVIEW" ||
+      format === "PDF_PREVIEW_FRONT" ||
+      format === "PDF_PREVIEW_BACK";
+
+    if (isPreviewFormat) {
+      const previewMode =
+        format === "PDF_PREVIEW_FRONT"
+          ? "FRONT"
+          : format === "PDF_PREVIEW_BACK"
+          ? "BACK"
+          : "COMPLETE";
+
+      const pdfBytes = await generatePreviewPdf(spec, previewMode);
+      return new NextResponse(Buffer.from(pdfBytes), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `${dispositionType}; filename="${cleanFileName}-preview-${previewMode.toLowerCase()}.pdf"`,
+          "Content-Length": String(pdfBytes.byteLength),
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      });
+    }
+
+    const printMode =
+      format === "PDF_FRONT"
+        ? "FRONT"
+        : format === "PDF_BACK"
+        ? "BACK"
+        : "COMPLETE";
+
+    const pdfBytes = await generatePrintReadyPdf(spec, printMode, { flipMode });
+    return new NextResponse(Buffer.from(pdfBytes), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `${dispositionType}; filename="${cleanFileName}-print-ready-a4-${printMode.toLowerCase()}.pdf"`,
+        "Content-Length": String(pdfBytes.byteLength),
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    });
+  } catch (error) {
+    console.error("GET Print export error:", error);
+    return NextResponse.json(
+      { error: "Failed to generate print document" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(req: NextRequest) {
   const session = await requireAdminApi(req);
@@ -197,6 +360,8 @@ export async function POST(req: NextRequest) {
         headers: {
           "Content-Type": "application/pdf",
           "Content-Disposition": `${dispositionType}; filename="${cleanFileName}-preview-${previewMode.toLowerCase()}.pdf"`,
+          "Content-Length": String(pdfBytes.byteLength),
+          "Cache-Control": "no-store, no-cache, must-revalidate",
         },
       });
     }
@@ -223,6 +388,8 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `${dispositionType}; filename="${cleanFileName}-print-ready-a4-${printMode.toLowerCase()}.pdf"`,
+        "Content-Length": String(pdfBytes.byteLength),
+        "Cache-Control": "no-store, no-cache, must-revalidate",
       },
     });
   } catch (error) {

@@ -592,9 +592,26 @@ function StudioEditorContent() {
         a.download = filename;
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setTimeout(() => {
+          try {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          } catch {}
+        }, 60000);
         setExportSuccessBanner(`Successfully generated & downloaded ${filename}`);
+      } else {
+        // Native stream fallback
+        const fallbackUrl = `/api/admin/export-pdf?designId=${encodeURIComponent(designId || "")}&format=${encodeURIComponent(format)}&flipMode=${encodeURIComponent(duplexFlipMode)}&disposition=attachment`;
+        window.location.href = fallbackUrl;
+        setExportSuccessBanner(`Download initiated via direct stream.`);
+      }
+    } catch {
+      try {
+        const fallbackUrl = `/api/admin/export-pdf?designId=${encodeURIComponent(designId || "")}&format=${encodeURIComponent(format)}&flipMode=${encodeURIComponent(duplexFlipMode)}&disposition=attachment`;
+        window.location.href = fallbackUrl;
+        setExportSuccessBanner(`Download initiated via direct stream.`);
+      } catch {
+        alert("Failed to download PDF. Please try again.");
       }
     } finally {
       setExportingFormat(null);
@@ -811,11 +828,27 @@ function StudioEditorContent() {
 
           <button
             type="button"
-            onClick={() => setIsPdfModalOpen(true)}
+            disabled={Boolean(exportingFormat)}
+            onClick={() => handleExportAsset("PDF_PRINT_READY")}
             className="px-4 py-2 rounded-xl bg-gold text-forest-950 font-bold text-xs uppercase tracking-wider hover:bg-gold-300 transition flex items-center gap-1.5 shadow-gold-glow"
+            title="Download Print-Ready A4 PDF directly (8-Up, Bleed, Crop Marks)"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>
+              {exportingFormat === "PDF_PRINT_READY"
+                ? "Downloading..."
+                : "Download PDF"}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsPdfModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-forest-900 border border-gold/40 text-gold font-bold text-xs uppercase tracking-wider hover:bg-forest-800 transition flex items-center gap-1.5"
+            title="Open Live PDF Preview & Inspector"
           >
             <Eye className="w-3.5 h-3.5" />
-            <span>PDF Preview &amp; Export</span>
+            <span>Preview &amp; Settings</span>
           </button>
 
           <button

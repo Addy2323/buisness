@@ -186,7 +186,27 @@ export function PdfExportModal({
     }
   }, [isOpen, activeMode, pageSelection, flipMode, fetchPreviewPdf, cleanupBlobUrl]);
 
-  // Direct download handler
+  // Helper for direct native download URL (bypasses blob memory)
+  const getDirectDownloadUrl = (
+    targetMode: ExportPdfMode,
+    side: "COMPLETE" | "FRONT" | "BACK" = pageSelection
+  ) => {
+    const fmt =
+      targetMode === "PREVIEW"
+        ? side === "FRONT"
+          ? "PDF_PREVIEW_FRONT"
+          : side === "BACK"
+          ? "PDF_PREVIEW_BACK"
+          : "PDF_PREVIEW"
+        : side === "FRONT"
+        ? "PDF_FRONT"
+        : side === "BACK"
+        ? "PDF_BACK"
+        : "PDF_PRINT_READY";
+    return `/api/admin/export-pdf?designId=${encodeURIComponent(designId || "")}&format=${encodeURIComponent(fmt)}&flipMode=${encodeURIComponent(flipMode)}&disposition=attachment`;
+  };
+
+  // Direct download handler with safe delayed URL revoke and native stream fallback
   const handleDownloadPdf = async (
     targetMode: ExportPdfMode,
     side: "COMPLETE" | "FRONT" | "BACK" = pageSelection
@@ -231,7 +251,13 @@ export function PdfExportModal({
         }),
       });
 
-      if (!res.ok) throw new Error("Download failed");
+      if (!res.ok) {
+        // Fallback immediately to direct native stream
+        const fallbackUrl = getDirectDownloadUrl(targetMode, side);
+        window.location.href = fallbackUrl;
+        setSuccessMessage("PDF download initiated via direct server stream.");
+        return;
+      }
 
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
@@ -248,8 +274,14 @@ export function PdfExportModal({
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
+
+      // Keep blob URL active for 60 seconds so browser download manager finishes writing to disk
+      setTimeout(() => {
+        try {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+        } catch {}
+      }, 60000);
 
       const msg =
         targetMode === "PREVIEW"
@@ -258,8 +290,14 @@ export function PdfExportModal({
 
       setSuccessMessage(msg);
     } catch (err) {
-      console.error("PDF download error:", err);
-      alert("Failed to download PDF. Please try again.");
+      console.warn("Blob download failed, falling back to native stream...", err);
+      try {
+        const fallbackUrl = getDirectDownloadUrl(targetMode, side);
+        window.location.href = fallbackUrl;
+        setSuccessMessage("PDF download initiated via direct server stream.");
+      } catch {
+        alert("Failed to download PDF. Please try again.");
+      }
     } finally {
       setDownloading(null);
     }
@@ -303,8 +341,13 @@ export function PdfExportModal({
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
+
+      setTimeout(() => {
+        try {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+        } catch {}
+      }, 60000);
 
       setSuccessMessage(`Exported high-resolution ${filename} successfully.`);
     } catch (err) {
@@ -573,6 +616,14 @@ export function PdfExportModal({
                 </span>
                 <ChevronRight className="w-3.5 h-3.5 text-charcoal-500" />
               </button>
+
+              <a
+                href={getDirectDownloadUrl(activeMode, pageSelection)}
+                download
+                className="w-full text-center text-[11px] text-forest-900/80 hover:text-gold-700 underline font-medium block pt-0.5"
+              >
+                Having browser issues? Click for direct server download
+              </a>
             </div>
 
             {/* Additional High-Res Formats */}
