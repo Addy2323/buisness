@@ -485,12 +485,24 @@ export default function HezlonDigitalProfilePage() {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-forest-950 via-forest-950/20 to-transparent" />
                 <div className="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 p-3.5 sm:p-4 rounded-2xl bg-forest-950/90 backdrop-blur-md border border-gold/30 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[10px] uppercase tracking-[0.16em] sm:tracking-[0.2em] text-gold font-bold">
-                      HEZLON WORKMANSHIP
-                    </div>
-                    <div className="text-xs sm:text-sm font-serif font-bold text-cream mt-0.5 truncate">
-                      Quality • Creativity • Reliability
+                  <div className="flex items-center gap-3 min-w-0">
+                    {data?.company?.ownerPhotoUrl ? (
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-gold overflow-hidden shrink-0 shadow-md bg-forest-900">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={data.company.ownerPhotoUrl}
+                          alt="HEZLON Executive Specialist"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-[0.16em] sm:tracking-[0.2em] text-gold font-bold">
+                        HEZLON WORKMANSHIP
+                      </div>
+                      <div className="text-xs sm:text-sm font-serif font-bold text-cream mt-0.5 truncate">
+                        Quality • Creativity • Reliability
+                      </div>
                     </div>
                   </div>
                   <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gold/15 border border-gold/40 flex items-center justify-center text-gold shrink-0">

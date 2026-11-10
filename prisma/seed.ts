@@ -49,7 +49,7 @@ async function main() {
     physicalAddress: "",
     workingHours: "",
     logoUrl: "",
-    ownerPhotoUrl: "",
+    ownerPhotoUrl: "/uploads/templates/hezlon-owner-portrait.png",
     coverImageUrl: "",
     galleryImagesJson: "[]",
     defaultWidthMm: 90,
