@@ -1,6 +1,7 @@
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFPage, PDFFont, rgb, StandardFonts } from "pdf-lib";
 import fs from "fs/promises";
 import path from "path";
+import sharp from "sharp";
 import {
   CanvasElement,
   CardBackground,
@@ -8,13 +9,13 @@ import {
   PrintValidationIssue,
   PrintValidationReport,
 } from "@/types/studio";
-import {
-  checkColorContrast,
-  generatePermanentQrBuffer,
-  generatePermanentQrDataUrl,
-} from "./qr-engine";
+import { checkColorContrast } from "./qr-engine";
+import { buildQrMatrix } from "./use-qr-matrix";
+import { normalizeSignatureQrElements } from "./templates-catalog";
 
 const MM_TO_PT = 2.83464567;
+
+export type DuplexFlipMode = "LONG_EDGE" | "SHORT_EDGE";
 
 export interface CardPrintSpec {
   designName: string;
@@ -32,7 +33,119 @@ export interface CardPrintSpec {
   qrDestinationUrl: string;
 }
 
-export function validateCardForPrint(spec: CardPrintSpec): PrintValidationReport {
+export interface PrintSheetLayoutInfo {
+  sheetStandard: "A4";
+  sheetWidthMm: number;
+  sheetHeightMm: number;
+  columns: number;
+  rows: number;
+  cardsPerSheet: number;
+  trimWidthMm: number;
+  trimHeightMm: number;
+  bleedMm: number;
+  cardWithBleedWidthMm: number;
+  cardWithBleedHeightMm: number;
+  horizontalGutterMm: number;
+  verticalGutterMm: number;
+  marginLeftToBleedMm: number;
+  marginTopToBleedMm: number;
+  marginLeftToTrimMm: number;
+  marginTopToTrimMm: number;
+  flipMode: DuplexFlipMode;
+  totalPages: number;
+}
+
+export interface PrintReadyPdfOptions {
+  flipMode?: DuplexFlipMode;
+}
+
+/**
+ * Calculates the exact A4 multi-card imposition grid for print-ready sheets.
+ * For standard 90×50 mm cards with 3 mm bleed (96×56 mm per card), arranges
+ * 8 cards per A4 sheet (2 columns × 4 rows) with 6 mm bleed gutters and
+ * symmetric margins so front/back duplex registration is exact to 0.00 mm.
+ */
+export function calculateA4SheetLayout(
+  spec: Pick<
+    CardPrintSpec,
+    "widthMm" | "heightMm" | "bleedMm" | "isDoubleSided"
+  >,
+  flipMode: DuplexFlipMode = "LONG_EDGE"
+): PrintSheetLayoutInfo {
+  const sheetWidthMm = 210;
+  const sheetHeightMm = 297;
+  const trimWidthMm = spec.widthMm || 90;
+  const trimHeightMm = spec.heightMm || 50;
+  const bleedMm = spec.bleedMm ?? 3;
+
+  const cardWithBleedWidthMm = trimWidthMm + bleedMm * 2;
+  const cardWithBleedHeightMm = trimHeightMm + bleedMm * 2;
+
+  const horizontalGutterMm = 6;
+  const verticalGutterMm = 6;
+
+  // Determine how many columns and rows fit comfortably inside A4 with >= 5mm outer margin for crop marks
+  const usableWidth = sheetWidthMm - 10;
+  const usableHeight = sheetHeightMm - 20;
+
+  const columns = Math.max(
+    1,
+    Math.floor(
+      (usableWidth + horizontalGutterMm) /
+        (cardWithBleedWidthMm + horizontalGutterMm)
+    )
+  );
+  const rows = Math.max(
+    1,
+    Math.floor(
+      (usableHeight + verticalGutterMm) /
+        (cardWithBleedHeightMm + verticalGutterMm)
+    )
+  );
+
+  const totalGridWidth =
+    columns * cardWithBleedWidthMm + (columns - 1) * horizontalGutterMm;
+  const totalGridHeight =
+    rows * cardWithBleedHeightMm + (rows - 1) * verticalGutterMm;
+
+  const marginLeftToBleedMm = Number(
+    ((sheetWidthMm - totalGridWidth) / 2).toFixed(2)
+  );
+  const marginTopToBleedMm = Number(
+    ((sheetHeightMm - totalGridHeight) / 2).toFixed(2)
+  );
+
+  return {
+    sheetStandard: "A4",
+    sheetWidthMm,
+    sheetHeightMm,
+    columns,
+    rows,
+    cardsPerSheet: columns * rows,
+    trimWidthMm,
+    trimHeightMm,
+    bleedMm,
+    cardWithBleedWidthMm,
+    cardWithBleedHeightMm,
+    horizontalGutterMm,
+    verticalGutterMm,
+    marginLeftToBleedMm,
+    marginTopToBleedMm,
+    marginLeftToTrimMm: Number((marginLeftToBleedMm + bleedMm).toFixed(2)),
+    marginTopToTrimMm: Number((marginTopToBleedMm + bleedMm).toFixed(2)),
+    flipMode,
+    totalPages: spec.isDoubleSided ? 2 : 1,
+  };
+}
+
+export function validateCardForPrint(
+  rawSpec: CardPrintSpec
+): PrintValidationReport {
+  const spec: CardPrintSpec = {
+    ...rawSpec,
+    frontElements: normalizeSignatureQrElements(rawSpec.frontElements || []),
+    backElements: normalizeSignatureQrElements(rawSpec.backElements || []),
+  };
   const issues: PrintValidationIssue[] = [];
 
   const isStandard90x50 =
@@ -63,9 +176,9 @@ export function validateCardForPrint(spec: CardPrintSpec): PrintValidationReport
         : isStandard85x55
         ? "EU Standard 85 × 55 mm Verified"
         : `Custom Dimensions (${spec.widthMm} × ${spec.heightMm} mm) Verified`,
-      message: `Physical trim box set to ${spec.widthMm} × ${spec.heightMm} mm (${(
-        spec.widthMm * MM_TO_PT
-      ).toFixed(1)} × ${(spec.heightMm * MM_TO_PT).toFixed(1)} pt).`,
+      message: `Finished trim size ${spec.widthMm} × ${spec.heightMm} mm (${
+        spec.widthMm + spec.bleedMm * 2
+      } × ${spec.heightMm + spec.bleedMm * 2} mm with bleed).`,
     });
   }
 
@@ -75,7 +188,7 @@ export function validateCardForPrint(spec: CardPrintSpec): PrintValidationReport
       severity: "WARNING",
       category: "BLEED",
       title: "Bleed Below 3 mm Standard",
-      message: `Current bleed is ${spec.bleedMm} mm. Commercial printing studios strongly recommend 3 mm bleed to prevent white hairline edges.`,
+      message: `Current bleed is ${spec.bleedMm} mm. Commercial printing studios recommend 3 mm bleed on all sides.`,
     });
   } else {
     issues.push({
@@ -83,9 +196,9 @@ export function validateCardForPrint(spec: CardPrintSpec): PrintValidationReport
       severity: "PASS",
       category: "BLEED",
       title: `${spec.bleedMm} mm Full-Bleed Margin Active`,
-      message: `Total bleed box is ${spec.widthMm + spec.bleedMm * 2} × ${
+      message: `Artwork with bleed measures ${spec.widthMm + spec.bleedMm * 2} × ${
         spec.heightMm + spec.bleedMm * 2
-      } mm with corner crop marks.`,
+      } mm (8 cards per A4 sheet).`,
     });
   }
 
@@ -181,10 +294,10 @@ export function validateCardForPrint(spec: CardPrintSpec): PrintValidationReport
             id: `qr-pass-${el.id}`,
             severity: "PASS",
             category: "QR_READABILITY",
-            title: `QR Code Verified (${minDim.toFixed(0)}×${minDim.toFixed(
-              0
+            title: `Vector QR Verified (${minDim.toFixed(1)}×${minDim.toFixed(
+              1
             )} mm, ${contrast}:1 Contrast)`,
-            message: `Permanent QR on ${side} points to ${spec.qrDestinationUrl} with Level H error correction.`,
+            message: `Permanent vector QR on ${side} resolves to ${spec.qrDestinationUrl} with Level H error correction.`,
             side,
             elementId: el.id,
           });
@@ -300,6 +413,26 @@ function escapeXml(unsafe: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/**
+ * Compares a text element against its master template text, normalizing
+ * British/American spelling ("Aluminium" vs "Aluminum", "Specialists" vs "Specialist")
+ * so unmodified master template fields do not paint opaque mask boxes over the master artwork.
+ */
+function isUnmodifiedMasterText(
+  el: CanvasElement,
+  bg: CardBackground
+): boolean {
+  if (!bg.backgroundImageUrl || !el.defaultMasterText) return false;
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/aluminium/g, "aluminum")
+      .replace(/specialists/g, "specialist")
+      .replace(/\s+/g, " ")
+      .trim();
+  return normalize(el.text || "") === normalize(el.defaultMasterText);
+}
+
 async function resolveImageDataUrl(imageUrl: string): Promise<string> {
   if (imageUrl.startsWith("data:")) return imageUrl;
   if (imageUrl.startsWith("/")) {
@@ -323,11 +456,11 @@ async function resolveImageDataUrl(imageUrl: string): Promise<string> {
 
 async function resolveImageBuffer(imageUrl: string): Promise<Buffer | null> {
   try {
-    if (imageUrl.startsWith("data:image/png;base64,")) {
-      return Buffer.from(
-        imageUrl.replace("data:image/png;base64,", ""),
-        "base64"
-      );
+    if (imageUrl.startsWith("data:image/")) {
+      const commaIdx = imageUrl.indexOf(",");
+      if (commaIdx !== -1) {
+        return Buffer.from(imageUrl.slice(commaIdx + 1), "base64");
+      }
     }
     if (imageUrl.startsWith("/")) {
       const localPath = path.join(process.cwd(), "public", imageUrl);
@@ -339,35 +472,61 @@ async function resolveImageBuffer(imageUrl: string): Promise<Buffer | null> {
   return null;
 }
 
+/**
+ * Extends the outer edges of a trim-sized background image into the 3mm bleed area
+ * so the central 90×50mm trim image remains at 100% exact 1:1 scale and position
+ * while the 3mm bleed margin is seamlessly filled with edge pixels.
+ */
+async function createBleedExtendedBackgroundBuffer(
+  bgBuf: Buffer,
+  widthMm: number,
+  heightMm: number,
+  bleedMm: number
+): Promise<Buffer> {
+  if (bleedMm <= 0) {
+    return await sharp(bgBuf).png().toBuffer();
+  }
+  const meta = await sharp(bgBuf).metadata();
+  const imgW = meta.width || 1800;
+  const imgH = meta.height || 1000;
+  const padX = Math.max(1, Math.round((bleedMm / widthMm) * imgW));
+  const padY = Math.max(1, Math.round((bleedMm / heightMm) * imgH));
+
+  return await sharp(bgBuf)
+    .extend({
+      top: padY,
+      bottom: padY,
+      left: padX,
+      right: padX,
+      extendWith: "copy",
+    })
+    .png({ compressionLevel: 8 })
+    .toBuffer();
+}
+
 export async function renderCardSideSvg(
-  spec: CardPrintSpec,
+  rawSpec: CardPrintSpec,
   side: CardSide,
   includeBleedAndMarks = false
 ): Promise<string> {
+  const spec: CardPrintSpec = {
+    ...rawSpec,
+    frontElements: normalizeSignatureQrElements(rawSpec.frontElements || []),
+    backElements: normalizeSignatureQrElements(rawSpec.backElements || []),
+  };
+
   const bg = side === "FRONT" ? spec.frontBg : spec.backBg;
   const elements = (side === "FRONT" ? spec.frontElements : spec.backElements)
     .filter((e) => !e.hidden)
     .sort((a, b) => a.zIndex - b.zIndex);
 
   const bleed = includeBleedAndMarks ? spec.bleedMm : 0;
-  const collar = includeBleedAndMarks ? 6 : 0;
+  const collar = includeBleedAndMarks ? 5 : 0;
   const offset = bleed + collar;
   const totalW = spec.widthMm + offset * 2;
   const totalH = spec.heightMm + offset * 2;
 
-  const qrDataUrls = new Map<string, string>();
-  for (const el of elements) {
-    if (el.type === "qr") {
-      const dataUrl = await generatePermanentQrDataUrl({
-        url: spec.qrDestinationUrl,
-        foregroundColor: el.qrForeground || "#0D2B22",
-        backgroundColor: el.qrBackground || "#FFFFFF",
-        errorCorrectionLevel: "H",
-        sizePx: 600,
-      });
-      qrDataUrls.set(el.id, dataUrl);
-    }
-  }
+  const qrMatrix = buildQrMatrix(spec.qrDestinationUrl);
 
   let defs = "";
   let bgRect = "";
@@ -378,10 +537,24 @@ export async function renderCardSideSvg(
   const bleedH = spec.heightMm + bleed * 2;
 
   if (bg.backgroundImageUrl) {
-    const bgDataUrl = await resolveImageDataUrl(bg.backgroundImageUrl);
-    bgRect = `<rect x="${bleedX}" y="${bleedY}" width="${bleedW}" height="${bleedH}" fill="${bg.primaryColor}" /><image x="${bleedX}" y="${bleedY}" width="${bleedW}" height="${bleedH}" href="${escapeXml(
-      bgDataUrl
-    )}" preserveAspectRatio="none" />`;
+    const rawBuf = await resolveImageBuffer(bg.backgroundImageUrl);
+    if (rawBuf && bleed > 0) {
+      const extBuf = await createBleedExtendedBackgroundBuffer(
+        rawBuf,
+        spec.widthMm,
+        spec.heightMm,
+        bleed
+      );
+      const extDataUrl = `data:image/png;base64,${extBuf.toString("base64")}`;
+      bgRect = `<rect x="${bleedX}" y="${bleedY}" width="${bleedW}" height="${bleedH}" fill="${bg.primaryColor}" /><image x="${bleedX}" y="${bleedY}" width="${bleedW}" height="${bleedH}" href="${escapeXml(
+        extDataUrl
+      )}" preserveAspectRatio="none" />`;
+    } else {
+      const bgDataUrl = await resolveImageDataUrl(bg.backgroundImageUrl);
+      bgRect = `<rect x="${bleedX}" y="${bleedY}" width="${bleedW}" height="${bleedH}" fill="${bg.primaryColor}" /><image x="${offset}" y="${offset}" width="${spec.widthMm}" height="${spec.heightMm}" href="${escapeXml(
+        bgDataUrl
+      )}" preserveAspectRatio="none" />`;
+    }
   } else if (bg.type === "gradient") {
     defs += `<linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="${bg.primaryColor}" />
@@ -581,22 +754,27 @@ export async function renderCardSideSvg(
         el.color || "#D4A84F"
       }" />`;
     } else if (el.type === "qr") {
-      const qrData = qrDataUrls.get(el.id);
       if (
         el.qrFrameStyle === "thin-gold" ||
         el.qrFrameStyle === "rounded-gold"
       ) {
-        elNodes += `<rect x="${x - 0.8}" y="${y - 0.8}" width="${
-          w + 1.6
-        }" height="${h + 1.6}" rx="${
-          el.qrFrameStyle === "rounded-gold" ? 1.8 : 0
+        elNodes += `<rect x="${x - 0.5}" y="${y - 0.5}" width="${
+          w + 1
+        }" height="${h + 1}" rx="${
+          el.qrFrameStyle === "rounded-gold" ? 1.5 : 0.3
         }" fill="${
           el.qrBackground || "#FFFFFF"
-        }" stroke="#C9A96E" stroke-width="0.4" />`;
+        }" stroke="#C9A96E" stroke-width="0.35" />`;
       }
-      if (qrData) {
-        elNodes += `<image x="${x}" y="${y}" width="${w}" height="${h}" href="${qrData}" />`;
-      }
+      // Render crisp vector QR matrix matching CardCanvasRenderer (1.5 module quiet zone)
+      elNodes += `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="-1.5 -1.5 ${
+        qrMatrix.size + 3
+      } ${qrMatrix.size + 3}" shape-rendering="crispEdges">
+        <rect x="-1.5" y="-1.5" width="${qrMatrix.size + 3}" height="${
+        qrMatrix.size + 3
+      }" fill="${el.qrBackground || "#FFFFFF"}" />
+        <path d="${qrMatrix.path}" fill="${el.qrForeground || "#0D2B22"}" />
+      </svg>`;
     } else if ((el.type === "logo" || el.type === "photo") && el.imageUrl) {
       const resolvedHref = await resolveImageDataUrl(el.imageUrl);
       elNodes += `<image x="${x}" y="${y}" width="${w}" height="${h}" href="${escapeXml(
@@ -610,10 +788,7 @@ export async function renderCardSideSvg(
         }" stroke-width="0.55" />`;
       }
     } else if (el.type === "text") {
-      const isUnmodifiedMaster =
-        Boolean(el.defaultMasterText) &&
-        (el.text || "").trim() === el.defaultMasterText?.trim();
-      if (!isUnmodifiedMaster) {
+      if (!isUnmodifiedMasterText(el, bg)) {
         if (el.fillColor) {
           elNodes += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${el.fillColor}" rx="0.5" />`;
         }
@@ -660,8 +835,8 @@ export async function renderCardSideSvg(
     const trimTop = offset;
     const trimRight = offset + spec.widthMm;
     const trimBottom = offset + spec.heightMm;
-    const mLen = 4;
-    const mGap = bleed + 0.8;
+    const mLen = 3.5;
+    const mGap = bleed + 1.0;
 
     cropMarks = `
       <g stroke="#000000" stroke-width="0.2">
@@ -697,43 +872,554 @@ export async function renderCardSideSvg(
     totalW * 12
   }" height="${totalH * 12}">
     <defs>${defs}</defs>
-    ${
-      includeBleedAndMarks
-        ? `<rect width="100%" height="100%" fill="#FFFFFF" />`
-        : ""
-    }
+    <rect width="100%" height="100%" fill="#FFFFFF" />
     ${bgRect}
     ${elNodes}
     ${cropMarks}
   </svg>`;
 }
 
-export async function generatePrintReadyPdf(
-  spec: CardPrintSpec,
-  mode: "COMPLETE" | "FRONT" | "BACK" = "COMPLETE"
-): Promise<Uint8Array> {
-  const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle(`${spec.designName} — HEZLON Print-Ready Production File`);
-  pdfDoc.setAuthor("HEZLON Building Solutions — Business Card Studio");
-  pdfDoc.setSubject(
-    `Trim: ${spec.widthMm}x${spec.heightMm}mm | Bleed: ${spec.bleedMm}mm | Finish: ${spec.paperFinish} | Color: CMYK-Compatible`
-  );
-  pdfDoc.setCreator("HEZLON Print Production Engine v1.0");
+interface EmbeddedPdfResources {
+  fontSansRegular: PDFFont;
+  fontSansBold: PDFFont;
+  fontSerifRegular: PDFFont;
+  fontSerifBold: PDFFont;
+  fontSerifItalic: PDFFont;
+  fontMono: PDFFont;
+  imageCache: Map<string, Awaited<ReturnType<PDFDocument["embedPng"]>>>;
+}
 
+async function preparePdfResources(
+  pdfDoc: PDFDocument,
+  spec: CardPrintSpec,
+  bleedMmForBg: number
+): Promise<EmbeddedPdfResources> {
   const fontSansRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontSansBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontSerifRegular = await pdfDoc.embedFont(StandardFonts.TimesRoman);
   const fontSerifBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
-  const fontSerifItalic = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+  const fontSerifItalic = await pdfDoc.embedFont(
+    StandardFonts.TimesRomanItalic
+  );
   const fontMono = await pdfDoc.embedFont(StandardFonts.CourierBold);
 
-  const collarMm = 8;
-  const totalOffsetMm = spec.bleedMm + collarMm;
-  const pageWidthMm = spec.widthMm + totalOffsetMm * 2;
-  const pageHeightMm = spec.heightMm + totalOffsetMm * 2;
+  const imageCache = new Map<
+    string,
+    Awaited<ReturnType<PDFDocument["embedPng"]>>
+  >();
 
-  const pageWidthPt = pageWidthMm * MM_TO_PT;
-  const pageHeightPt = pageHeightMm * MM_TO_PT;
+  // Pre-embed background images (with edge-extended bleed when bleedMmForBg > 0)
+  for (const bg of [spec.frontBg, spec.backBg]) {
+    if (bg?.backgroundImageUrl) {
+      const cacheKey = `${bg.backgroundImageUrl}::bleed=${bleedMmForBg}`;
+      if (!imageCache.has(cacheKey)) {
+        const rawBuf = await resolveImageBuffer(bg.backgroundImageUrl);
+        if (rawBuf) {
+          try {
+            const pngBuf = await createBleedExtendedBackgroundBuffer(
+              rawBuf,
+              spec.widthMm,
+              spec.heightMm,
+              bleedMmForBg
+            );
+            const embedded = await pdfDoc.embedPng(pngBuf);
+            imageCache.set(cacheKey, embedded);
+          } catch {
+            // ignore unembeddable background
+          }
+        }
+      }
+    }
+  }
+
+  // Pre-embed element logo/photo images (normalized to PNG via sharp for universal support)
+  for (const el of [...spec.frontElements, ...spec.backElements]) {
+    if ((el.type === "logo" || el.type === "photo") && el.imageUrl) {
+      if (!imageCache.has(el.imageUrl)) {
+        const rawBuf = await resolveImageBuffer(el.imageUrl);
+        if (rawBuf) {
+          try {
+            const pngBuf = await sharp(rawBuf).png().toBuffer();
+            const embedded = await pdfDoc.embedPng(pngBuf);
+            imageCache.set(el.imageUrl, embedded);
+          } catch {
+            // ignore unsupported image
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    fontSansRegular,
+    fontSansBold,
+    fontSerifRegular,
+    fontSerifBold,
+    fontSerifItalic,
+    fontMono,
+    imageCache,
+  };
+}
+
+/**
+ * Draws a single business card side (FRONT or BACK) onto a PDFPage at the
+ * specified trim box coordinates (trimLeftPt, trimBottomPt) with optional bleed.
+ */
+function drawCardArtworkOnPage(
+  page: PDFPage,
+  spec: CardPrintSpec,
+  side: CardSide,
+  trimLeftPt: number,
+  trimBottomPt: number,
+  bleedMm: number,
+  res: EmbeddedPdfResources
+) {
+  const bg = side === "FRONT" ? spec.frontBg : spec.backBg;
+  const elements = (side === "FRONT" ? spec.frontElements : spec.backElements)
+    .filter((e) => !e.hidden)
+    .sort((a, b) => a.zIndex - b.zIndex);
+
+  const trimWidthPt = spec.widthMm * MM_TO_PT;
+  const trimHeightPt = spec.heightMm * MM_TO_PT;
+
+  const bleedPt = bleedMm * MM_TO_PT;
+  const bleedLeftPt = trimLeftPt - bleedPt;
+  const bleedBottomPt = trimBottomPt - bleedPt;
+  const bleedWidthPt = trimWidthPt + bleedPt * 2;
+  const bleedHeightPt = trimHeightPt + bleedPt * 2;
+
+  // 1. Base Background Fill
+  const cPrimary = parseHexToRgb(bg.primaryColor);
+  page.drawRectangle({
+    x: bleedLeftPt,
+    y: bleedBottomPt,
+    width: bleedWidthPt,
+    height: bleedHeightPt,
+    color: rgb(cPrimary.r, cPrimary.g, cPrimary.b),
+  });
+
+  const bgCacheKey = bg.backgroundImageUrl
+    ? `${bg.backgroundImageUrl}::bleed=${bleedMm}`
+    : "";
+  const embeddedBg = bgCacheKey ? res.imageCache.get(bgCacheKey) : undefined;
+
+  if (embeddedBg) {
+    // Because createBleedExtendedBackgroundBuffer padded the outer edges by exact bleedMm,
+    // drawing across (bleedLeftPt, bleedBottomPt, bleedWidthPt, bleedHeightPt) places
+    // the original 90×50mm artwork at the exact (trimLeftPt, trimBottomPt, trimWidthPt, trimHeightPt) box!
+    page.drawImage(embeddedBg, {
+      x: bleedLeftPt,
+      y: bleedBottomPt,
+      width: bleedWidthPt,
+      height: bleedHeightPt,
+    });
+  } else if (bg.type === "split-panel") {
+    const cSec = parseHexToRgb(bg.secondaryColor || "#F8F5EE");
+    const ratio =
+      bg.splitDirection === "diagonal-left-gold" ||
+      bg.splitDirection === "chevron-left-gold"
+        ? 0.37
+        : bg.splitRatio || 0.4;
+    if (bg.splitDirection === "horizontal") {
+      const lowerHeightPt = bleedHeightPt * (1 - ratio);
+      page.drawRectangle({
+        x: bleedLeftPt,
+        y: bleedBottomPt,
+        width: bleedWidthPt,
+        height: lowerHeightPt,
+        color: rgb(cSec.r, cSec.g, cSec.b),
+      });
+    } else if (bg.splitDirection === "back-showcase-ribbon") {
+      const cAcc = parseHexToRgb(bg.accentColor || "#D4A84F");
+      page.drawRectangle({
+        x: bleedLeftPt,
+        y: bleedBottomPt,
+        width: bleedWidthPt * 0.68,
+        height: (9.5 + bleedMm) * MM_TO_PT,
+        color: rgb(cAcc.r, cAcc.g, cAcc.b),
+      });
+    } else if (bg.splitDirection !== "back-chevron-matrix") {
+      const leftWidthPt = bleedWidthPt * ratio;
+      page.drawRectangle({
+        x: bleedLeftPt + leftWidthPt,
+        y: bleedBottomPt,
+        width: bleedWidthPt - leftWidthPt,
+        height: bleedHeightPt,
+        color: rgb(cSec.r, cSec.g, cSec.b),
+      });
+      if (bg.accentColor) {
+        const cAcc = parseHexToRgb(bg.accentColor);
+        page.drawRectangle({
+          x: bleedLeftPt + leftWidthPt - 0.5 * MM_TO_PT,
+          y: bleedBottomPt,
+          width: 1.0 * MM_TO_PT,
+          height: bleedHeightPt,
+          color: rgb(cAcc.r, cAcc.g, cAcc.b),
+        });
+      }
+    }
+  } else if (bg.type === "luxury-border") {
+    const insetPt = (bg.borderInsetMm || 4.5) * MM_TO_PT;
+    const cAcc = parseHexToRgb(bg.accentColor || "#C9A96E");
+    page.drawRectangle({
+      x: trimLeftPt + insetPt,
+      y: trimBottomPt + insetPt,
+      width: trimWidthPt - insetPt * 2,
+      height: trimHeightPt - insetPt * 2,
+      borderColor: rgb(cAcc.r, cAcc.g, cAcc.b),
+      borderWidth: (bg.borderWidthMm || 0.35) * MM_TO_PT,
+    });
+    const innerInsetPt = insetPt + 1 * MM_TO_PT;
+    page.drawRectangle({
+      x: trimLeftPt + innerInsetPt,
+      y: trimBottomPt + innerInsetPt,
+      width: trimWidthPt - innerInsetPt * 2,
+      height: trimHeightPt - innerInsetPt * 2,
+      borderColor: rgb(cAcc.r, cAcc.g, cAcc.b),
+      borderWidth: (bg.borderWidthMm || 0.35) * 0.5 * MM_TO_PT,
+      borderOpacity: 0.5,
+    });
+  } else if (bg.type === "architectural-grid") {
+    const cAcc = parseHexToRgb(bg.accentColor || "#C9A96E");
+    for (let gx = 0; gx <= spec.widthMm; gx += 10) {
+      page.drawLine({
+        start: { x: trimLeftPt + gx * MM_TO_PT, y: bleedBottomPt },
+        end: {
+          x: trimLeftPt + gx * MM_TO_PT,
+          y: bleedBottomPt + bleedHeightPt,
+        },
+        thickness: 0.25,
+        color: rgb(cAcc.r, cAcc.g, cAcc.b),
+        opacity: bg.patternOpacity || 0.14,
+      });
+    }
+    for (let gy = 0; gy <= spec.heightMm; gy += 10) {
+      page.drawLine({
+        start: { x: bleedLeftPt, y: trimBottomPt + gy * MM_TO_PT },
+        end: {
+          x: bleedLeftPt + bleedWidthPt,
+          y: trimBottomPt + gy * MM_TO_PT,
+        },
+        thickness: 0.25,
+        color: rgb(cAcc.r, cAcc.g, cAcc.b),
+        opacity: bg.patternOpacity || 0.14,
+      });
+    }
+  }
+
+  // 2. Draw Vector & Raster Elements Inside Trim Coordinate Space
+  const qrMatrix = buildQrMatrix(spec.qrDestinationUrl);
+
+  for (const el of elements) {
+    const xPt = trimLeftPt + el.xMm * MM_TO_PT;
+    const wPt = el.widthMm * MM_TO_PT;
+    const hPt = el.heightMm * MM_TO_PT;
+    const yPt = trimBottomPt + trimHeightPt - (el.yMm + el.heightMm) * MM_TO_PT;
+
+    if (el.type === "shape") {
+      if (el.shapeVariant === "frame") {
+        const cStroke = parseHexToRgb(el.strokeColor || "#C9A96E");
+        page.drawRectangle({
+          x: xPt,
+          y: yPt,
+          width: wPt,
+          height: hPt,
+          borderColor: rgb(cStroke.r, cStroke.g, cStroke.b),
+          borderWidth: (el.strokeWidthMm || 0.35) * MM_TO_PT,
+        });
+      } else if (el.shapeVariant === "circle") {
+        const cFill = parseHexToRgb(el.fillColor || "#C9A96E");
+        page.drawCircle({
+          x: xPt + wPt / 2,
+          y: yPt + hPt / 2,
+          size: Math.min(wPt, hPt) / 2,
+          color: rgb(cFill.r, cFill.g, cFill.b),
+        });
+      } else {
+        const cFill = parseHexToRgb(el.fillColor || "#0D2B22");
+        page.drawRectangle({
+          x: xPt,
+          y: yPt,
+          width: wPt,
+          height: hPt,
+          color: rgb(cFill.r, cFill.g, cFill.b),
+          borderColor: el.strokeColor
+            ? (() => {
+                const s = parseHexToRgb(el.strokeColor);
+                return rgb(s.r, s.g, s.b);
+              })()
+            : undefined,
+          borderWidth: el.strokeWidthMm ? el.strokeWidthMm * MM_TO_PT : 0,
+        });
+      }
+    } else if (el.type === "line") {
+      const cFill = parseHexToRgb(el.fillColor || "#C9A96E");
+      page.drawRectangle({
+        x: xPt,
+        y: yPt,
+        width: wPt,
+        height: Math.max(hPt, 0.35 * MM_TO_PT),
+        color: rgb(cFill.r, cFill.g, cFill.b),
+      });
+    } else if (el.type === "monogram") {
+      const cFill = parseHexToRgb(el.fillColor || "#133B2E");
+      const cStroke = parseHexToRgb(el.strokeColor || "#C9A96E");
+      const cText = parseHexToRgb(el.color || "#C9A96E");
+      if (el.badgeStyle === "hezlon-skyline-crest") {
+        page.drawRectangle({
+          x: xPt + wPt * 0.22,
+          y: yPt + hPt * 0.08,
+          width: wPt * 0.18,
+          height: hPt * 0.56,
+          color: rgb(cText.r, cText.g, cText.b),
+        });
+        page.drawRectangle({
+          x: xPt + wPt * 0.45,
+          y: yPt + hPt * 0.08,
+          width: wPt * 0.09,
+          height: hPt * 0.82,
+          color: rgb(1, 1, 1),
+        });
+        page.drawRectangle({
+          x: xPt + wPt * 0.57,
+          y: yPt + hPt * 0.08,
+          width: wPt * 0.18,
+          height: hPt * 0.66,
+          color: rgb(cText.r, cText.g, cText.b),
+        });
+      } else {
+        if (el.badgeStyle === "square-architectural") {
+          page.drawRectangle({
+            x: xPt,
+            y: yPt,
+            width: wPt,
+            height: hPt,
+            color: rgb(cFill.r, cFill.g, cFill.b),
+            borderColor: rgb(cStroke.r, cStroke.g, cStroke.b),
+            borderWidth: 1,
+          });
+        } else {
+          page.drawCircle({
+            x: xPt + wPt / 2,
+            y: yPt + hPt / 2,
+            size: Math.min(wPt, hPt) / 2,
+            color: rgb(cFill.r, cFill.g, cFill.b),
+            borderColor: rgb(cStroke.r, cStroke.g, cStroke.b),
+            borderWidth: 1,
+          });
+        }
+        const mChar = (el.monogramText || "H").slice(0, 2);
+        const fSize = Math.min(wPt, hPt) * 0.52;
+        const mWidth = res.fontSerifBold.widthOfTextAtSize(mChar, fSize);
+        page.drawText(mChar, {
+          x: xPt + (wPt - mWidth) / 2,
+          y: yPt + hPt / 2 - fSize * 0.34,
+          size: fSize,
+          font: res.fontSerifBold,
+          color: rgb(cText.r, cText.g, cText.b),
+        });
+      }
+    } else if (el.type === "icon") {
+      const cFill = parseHexToRgb(el.fillColor || "#09261E");
+      const cStroke = parseHexToRgb(el.strokeColor || "#D4A84F");
+      const cIcon = parseHexToRgb(el.color || "#C9A96E");
+      const cx = xPt + wPt / 2;
+      const cy = yPt + hPt / 2;
+      const rad = Math.min(wPt, hPt) / 2;
+
+      if (
+        el.badgeStyle === "solid-circle" ||
+        el.badgeStyle === "gold-ring-icon"
+      ) {
+        page.drawCircle({
+          x: cx,
+          y: cy,
+          size: rad,
+          color: rgb(cFill.r, cFill.g, cFill.b),
+          borderColor:
+            el.badgeStyle === "gold-ring-icon"
+              ? rgb(cStroke.r, cStroke.g, cStroke.b)
+              : undefined,
+          borderWidth: el.badgeStyle === "gold-ring-icon" ? 0.8 : 0,
+        });
+      }
+      // Crisp inner vector glyph representation
+      const ir = rad * 0.42;
+      page.drawRectangle({
+        x: cx - ir,
+        y: cy - ir * 0.75,
+        width: ir * 2,
+        height: ir * 1.5,
+        borderColor: rgb(cIcon.r, cIcon.g, cIcon.b),
+        borderWidth: 0.75,
+      });
+    } else if ((el.type === "photo" || el.type === "logo") && el.imageUrl) {
+      const pdfImg = res.imageCache.get(el.imageUrl);
+      if (pdfImg) {
+        page.drawImage(pdfImg, {
+          x: xPt,
+          y: yPt,
+          width: wPt,
+          height: hPt,
+        });
+        if (el.badgeStyle === "circle-gold") {
+          const cStroke = parseHexToRgb(el.strokeColor || "#C9A24D");
+          page.drawCircle({
+            x: xPt + wPt / 2,
+            y: yPt + hPt / 2,
+            size: Math.min(wPt, hPt) / 2,
+            borderColor: rgb(cStroke.r, cStroke.g, cStroke.b),
+            borderWidth: 1.4,
+          });
+        }
+      }
+    } else if (el.type === "qr") {
+      // Draw Pure Vector QR Code with 1.5-module quiet zone (matches Studio Canvas 1:1)
+      const cBg = parseHexToRgb(el.qrBackground || "#FFFFFF");
+      const cFg = parseHexToRgb(el.qrForeground || "#0D2B22");
+
+      const hasFrame =
+        el.qrFrameStyle === "thin-gold" || el.qrFrameStyle === "rounded-gold";
+      const cGold = parseHexToRgb("#D4A84F");
+
+      page.drawRectangle({
+        x: xPt,
+        y: yPt,
+        width: wPt,
+        height: hPt,
+        color: rgb(cBg.r, cBg.g, cBg.b),
+        borderColor: hasFrame ? rgb(cGold.r, cGold.g, cGold.b) : undefined,
+        borderWidth: hasFrame ? 0.9 : 0,
+      });
+
+      const quietModules = 1.5;
+      const totalModules = qrMatrix.size + quietModules * 2;
+      const modW = wPt / totalModules;
+      const modH = hPt / totalModules;
+      const fgColor = rgb(cFg.r, cFg.g, cFg.b);
+
+      for (let r = 0; r < qrMatrix.size; r++) {
+        for (let c = 0; c < qrMatrix.size; c++) {
+          if (qrMatrix.isDark(r, c)) {
+            const mx = xPt + (c + quietModules) * modW;
+            const my = yPt + hPt - (r + quietModules + 1) * modH;
+            page.drawRectangle({
+              x: mx,
+              y: my,
+              width: modW + 0.08,
+              height: modH + 0.08,
+              color: fgColor,
+            });
+          }
+        }
+      }
+    } else if (el.type === "text" && el.text) {
+      if (!isUnmodifiedMasterText(el, bg)) {
+        if (el.fillColor) {
+          const cMask = parseHexToRgb(el.fillColor);
+          page.drawRectangle({
+            x: xPt,
+            y: yPt,
+            width: wPt,
+            height: hPt,
+            color: rgb(cMask.r, cMask.g, cMask.b),
+          });
+        }
+        const isSerif = [
+          "Playfair Display",
+          "Cormorant Garamond",
+          "Cinzel",
+        ].includes(el.fontFamily || "");
+        const isMono = el.fontFamily === "JetBrains Mono";
+        const isBold = ["600", "700", "800"].includes(el.fontWeight || "500");
+
+        const chosenFont = isMono
+          ? res.fontMono
+          : isSerif
+          ? el.fontStyle === "italic"
+            ? res.fontSerifItalic
+            : isBold
+            ? res.fontSerifBold
+            : res.fontSerifRegular
+          : isBold
+          ? res.fontSansBold
+          : res.fontSansRegular;
+
+        const baseFontSizePt = el.fontSizePt || 8;
+        const cText = parseHexToRgb(el.color || "#FFFFFF");
+        const lines = el.text.split("\n");
+        const lineHeightMult = el.lineHeight || 1.25;
+        const topY = trimBottomPt + trimHeightPt - el.yMm * MM_TO_PT;
+
+        lines.forEach((rawLine, lineIdx) => {
+          const lineText =
+            el.textTransform === "uppercase"
+              ? rawLine.toUpperCase()
+              : el.textTransform === "lowercase"
+              ? rawLine.toLowerCase()
+              : rawLine;
+          const cleanLine = lineText.replace(/[^\x20-\x7E•]/g, " ");
+
+          // Prevent horizontal clipping/overflow by auto-fitting fontSizePt if wider than box
+          let fontSizePt = baseFontSizePt;
+          let textWidth = chosenFont.widthOfTextAtSize(cleanLine, fontSizePt);
+          if (textWidth > wPt && wPt > 4) {
+            fontSizePt = Math.max(4.2, (baseFontSizePt * wPt) / textWidth);
+            textWidth = chosenFont.widthOfTextAtSize(cleanLine, fontSizePt);
+          }
+
+          let drawX = xPt;
+          if (el.textAlign === "center") {
+            drawX = xPt + (wPt - textWidth) / 2;
+          } else if (el.textAlign === "right") {
+            drawX = xPt + wPt - textWidth;
+          }
+
+          const drawY =
+            topY - fontSizePt - lineIdx * (baseFontSizePt * lineHeightMult);
+          if (drawY >= trimBottomPt - 2) {
+            page.drawText(cleanLine, {
+              x: drawX,
+              y: drawY,
+              size: fontSizePt,
+              font: chosenFont,
+              color: rgb(cText.r, cText.g, cText.b),
+            });
+          }
+        });
+      }
+    }
+  }
+}
+
+/**
+ * MODE A: PREVIEW PDF
+ * Generates a clean, professional 2-page PDF (Page 1: Front, Page 2: Back)
+ * at exact finished card dimensions (90 × 50 mm) on a clean white background.
+ * Zero calibration bars, zero technical labels, zero crop marks, zero excessive whitespace.
+ */
+export async function generatePreviewPdf(
+  rawSpec: CardPrintSpec,
+  mode: "COMPLETE" | "FRONT" | "BACK" = "COMPLETE"
+): Promise<Uint8Array> {
+  const spec: CardPrintSpec = {
+    ...rawSpec,
+    frontElements: normalizeSignatureQrElements(rawSpec.frontElements || []),
+    backElements: normalizeSignatureQrElements(rawSpec.backElements || []),
+  };
+
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setTitle(`${spec.designName} — Business Card Preview`);
+  pdfDoc.setAuthor("HEZLON Building Solutions");
+  pdfDoc.setSubject(
+    `Business Card Preview (${spec.widthMm} × ${spec.heightMm} mm)`
+  );
+  pdfDoc.setCreator("HEZLON Business Card Studio");
+
+  const res = await preparePdfResources(pdfDoc, spec, 0);
+
+  const pageWidthPt = spec.widthMm * MM_TO_PT;
+  const pageHeightPt = spec.heightMm * MM_TO_PT;
 
   const sidesToRender: CardSide[] =
     mode === "FRONT"
@@ -746,458 +1432,181 @@ export async function generatePrintReadyPdf(
 
   for (const side of sidesToRender) {
     const page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
-    const bg = side === "FRONT" ? spec.frontBg : spec.backBg;
-    const elements = (side === "FRONT" ? spec.frontElements : spec.backElements)
-      .filter((e) => !e.hidden)
-      .sort((a, b) => a.zIndex - b.zIndex);
-
-    const trimLeftPt = totalOffsetMm * MM_TO_PT;
-    const trimBottomPt = totalOffsetMm * MM_TO_PT;
-    const trimWidthPt = spec.widthMm * MM_TO_PT;
-    const trimHeightPt = spec.heightMm * MM_TO_PT;
-
-    const bleedLeftPt = collarMm * MM_TO_PT;
-    const bleedBottomPt = collarMm * MM_TO_PT;
-    const bleedWidthPt = (spec.widthMm + spec.bleedMm * 2) * MM_TO_PT;
-    const bleedHeightPt = (spec.heightMm + spec.bleedMm * 2) * MM_TO_PT;
-
-    // 1. Draw Full-Bleed Background
-    const cPrimary = parseHexToRgb(bg.primaryColor);
+    // Pure white base background
     page.drawRectangle({
-      x: bleedLeftPt,
-      y: bleedBottomPt,
-      width: bleedWidthPt,
-      height: bleedHeightPt,
-      color: rgb(cPrimary.r, cPrimary.g, cPrimary.b),
+      x: 0,
+      y: 0,
+      width: pageWidthPt,
+      height: pageHeightPt,
+      color: rgb(1, 1, 1),
     });
 
-    if (bg.backgroundImageUrl) {
-      const bgBuf = await resolveImageBuffer(bg.backgroundImageUrl);
-      if (bgBuf) {
-        try {
-          const isJpg =
-            bg.backgroundImageUrl.endsWith(".jpg") ||
-            bg.backgroundImageUrl.endsWith(".jpeg");
-          const pdfBgImg = isJpg
-            ? await pdfDoc.embedJpg(bgBuf)
-            : await pdfDoc.embedPng(bgBuf);
-          page.drawImage(pdfBgImg, {
-            x: bleedLeftPt,
-            y: bleedBottomPt,
-            width: bleedWidthPt,
-            height: bleedHeightPt,
-          });
-        } catch {
-          // ignore if background image cannot be embedded
-        }
-      }
-    } else if (bg.type === "split-panel") {
-      const cSec = parseHexToRgb(bg.secondaryColor || "#F8F5EE");
-      const ratio =
-        bg.splitDirection === "diagonal-left-gold" ||
-        bg.splitDirection === "chevron-left-gold"
-          ? 0.37
-          : bg.splitRatio || 0.4;
-      if (bg.splitDirection === "horizontal") {
-        const lowerHeightPt = bleedHeightPt * (1 - ratio);
-        page.drawRectangle({
-          x: bleedLeftPt,
-          y: bleedBottomPt,
-          width: bleedWidthPt,
-          height: lowerHeightPt,
-          color: rgb(cSec.r, cSec.g, cSec.b),
-        });
-      } else if (bg.splitDirection === "back-showcase-ribbon") {
-        const cAcc = parseHexToRgb(bg.accentColor || "#D4A84F");
-        page.drawRectangle({
-          x: bleedLeftPt,
-          y: bleedBottomPt,
-          width: bleedWidthPt * 0.68,
-          height: (9.5 + spec.bleedMm) * MM_TO_PT,
-          color: rgb(cAcc.r, cAcc.g, cAcc.b),
-        });
-      } else if (bg.splitDirection !== "back-chevron-matrix") {
-        const leftWidthPt = bleedWidthPt * ratio;
-        page.drawRectangle({
-          x: bleedLeftPt + leftWidthPt,
-          y: bleedBottomPt,
-          width: bleedWidthPt - leftWidthPt,
-          height: bleedHeightPt,
-          color: rgb(cSec.r, cSec.g, cSec.b),
-        });
-        if (bg.accentColor) {
-          const cAcc = parseHexToRgb(bg.accentColor);
-          page.drawRectangle({
-            x: bleedLeftPt + leftWidthPt - 0.6 * MM_TO_PT,
-            y: bleedBottomPt,
-            width: 1.2 * MM_TO_PT,
-            height: bleedHeightPt,
-            color: rgb(cAcc.r, cAcc.g, cAcc.b),
-          });
-        }
-      }
-    } else if (bg.type === "luxury-border") {
-      const insetPt = (bg.borderInsetMm || 4.5) * MM_TO_PT;
-      const cAcc = parseHexToRgb(bg.accentColor || "#C9A96E");
-      page.drawRectangle({
-        x: trimLeftPt + insetPt,
-        y: trimBottomPt + insetPt,
-        width: trimWidthPt - insetPt * 2,
-        height: trimHeightPt - insetPt * 2,
-        borderColor: rgb(cAcc.r, cAcc.g, cAcc.b),
-        borderWidth: (bg.borderWidthMm || 0.35) * MM_TO_PT,
-      });
-    } else if (bg.type === "architectural-grid") {
-      const cAcc = parseHexToRgb(bg.accentColor || "#C9A96E");
-      for (let gx = 0; gx <= spec.widthMm; gx += 10) {
-        page.drawLine({
-          start: { x: trimLeftPt + gx * MM_TO_PT, y: bleedBottomPt },
-          end: {
-            x: trimLeftPt + gx * MM_TO_PT,
-            y: bleedBottomPt + bleedHeightPt,
+    drawCardArtworkOnPage(page, spec, side, 0, 0, 0, res);
+  }
+
+  return await pdfDoc.save();
+}
+
+/**
+ * MODE B: PRINT-READY PDF (A4 Multi-Card Sheet Imposition)
+ * Arranges multiple business cards (8 cards per A4 210 × 297 mm sheet in a 2 × 4 grid)
+ * respecting 90 × 50 mm trim and 3 mm bleed (96 × 56 mm per card), with cutting marks
+ * placed strictly outside the card bleed boxes and matched Front/Back duplex positions.
+ */
+export async function generatePrintReadyPdf(
+  rawSpec: CardPrintSpec,
+  mode: "COMPLETE" | "FRONT" | "BACK" = "COMPLETE",
+  options: PrintReadyPdfOptions = {}
+): Promise<Uint8Array> {
+  const spec: CardPrintSpec = {
+    ...rawSpec,
+    frontElements: normalizeSignatureQrElements(rawSpec.frontElements || []),
+    backElements: normalizeSignatureQrElements(rawSpec.backElements || []),
+  };
+
+  const flipMode: DuplexFlipMode = options.flipMode || "LONG_EDGE";
+  const layout = calculateA4SheetLayout(spec, flipMode);
+
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setTitle(
+    `${spec.designName} — A4 Print-Ready Imposition (${layout.cardsPerSheet}-Up)`
+  );
+  pdfDoc.setAuthor("HEZLON Building Solutions");
+  pdfDoc.setSubject(
+    `A4 Sheet (210x297mm) | ${layout.cardsPerSheet} Cards/Sheet | Trim: ${spec.widthMm}x${spec.heightMm}mm | Bleed: ${spec.bleedMm}mm | Duplex: ${flipMode}`
+  );
+  pdfDoc.setCreator("HEZLON Commercial Print Engine");
+
+  const res = await preparePdfResources(pdfDoc, spec, spec.bleedMm);
+
+  const sheetWidthPt = layout.sheetWidthMm * MM_TO_PT;
+  const sheetHeightPt = layout.sheetHeightMm * MM_TO_PT;
+
+  const sidesToRender: CardSide[] =
+    mode === "FRONT"
+      ? ["FRONT"]
+      : mode === "BACK"
+      ? ["BACK"]
+      : spec.isDoubleSided
+      ? ["FRONT", "BACK"]
+      : ["FRONT"];
+
+  for (const side of sidesToRender) {
+    const page = pdfDoc.addPage([sheetWidthPt, sheetHeightPt]);
+
+    // Clean white A4 sheet background
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width: sheetWidthPt,
+      height: sheetHeightPt,
+      color: rgb(1, 1, 1),
+    });
+
+    // Draw all 8 cards in the 2 × 4 grid
+    for (let r = 0; r < layout.rows; r++) {
+      for (let c = 0; c < layout.columns; c++) {
+        // Match front/back positions for duplex printing
+        const effectiveCol =
+          side === "BACK" && flipMode === "LONG_EDGE"
+            ? layout.columns - 1 - c
+            : c;
+        const effectiveRow =
+          side === "BACK" && flipMode === "SHORT_EDGE"
+            ? layout.rows - 1 - r
+            : r;
+
+        const bleedLeftMm =
+          layout.marginLeftToBleedMm +
+          effectiveCol *
+            (layout.cardWithBleedWidthMm + layout.horizontalGutterMm);
+        const bleedTopMm =
+          layout.marginTopToBleedMm +
+          effectiveRow *
+            (layout.cardWithBleedHeightMm + layout.verticalGutterMm);
+
+        const trimLeftMm = bleedLeftMm + spec.bleedMm;
+        const trimTopMm = bleedTopMm + spec.bleedMm;
+        const trimBottomMm =
+          layout.sheetHeightMm - trimTopMm - layout.trimHeightMm;
+
+        const trimLeftPt = trimLeftMm * MM_TO_PT;
+        const trimBottomPt = trimBottomMm * MM_TO_PT;
+
+        drawCardArtworkOnPage(
+          page,
+          spec,
+          side,
+          trimLeftPt,
+          trimBottomPt,
+          spec.bleedMm,
+          res
+        );
+
+        // Draw precision cutting marks strictly outside the 96×56 mm bleed box
+        const trimRightMm = trimLeftMm + layout.trimWidthMm;
+        const trimTopYFromBottomMm = trimBottomMm + layout.trimHeightMm;
+
+        const markOffsetFromTrimMm = spec.bleedMm + 1.2; // 1.2 mm outside bleed edge
+        const markLengthMm = 3.6; // Fits cleanly in the 6.0 mm bleed gutter without touching adjacent bleed
+
+        const xLeftPt = trimLeftMm * MM_TO_PT;
+        const xRightPt = trimRightMm * MM_TO_PT;
+        const yBottomPt = trimBottomMm * MM_TO_PT;
+        const yTopPt = trimTopYFromBottomMm * MM_TO_PT;
+
+        const gapPt = markOffsetFromTrimMm * MM_TO_PT;
+        const lenPt = markLengthMm * MM_TO_PT;
+
+        const cropSegments = [
+          // Top-left corner
+          {
+            start: { x: xLeftPt - gapPt - lenPt, y: yTopPt },
+            end: { x: xLeftPt - gapPt, y: yTopPt },
           },
-          thickness: 0.25,
-          color: rgb(cAcc.r, cAcc.g, cAcc.b),
-          opacity: bg.patternOpacity || 0.14,
-        });
-      }
-      for (let gy = 0; gy <= spec.heightMm; gy += 10) {
-        page.drawLine({
-          start: { x: bleedLeftPt, y: trimBottomPt + gy * MM_TO_PT },
-          end: {
-            x: bleedLeftPt + bleedWidthPt,
-            y: trimBottomPt + gy * MM_TO_PT,
+          {
+            start: { x: xLeftPt, y: yTopPt + gapPt },
+            end: { x: xLeftPt, y: yTopPt + gapPt + lenPt },
           },
-          thickness: 0.25,
-          color: rgb(cAcc.r, cAcc.g, cAcc.b),
-          opacity: bg.patternOpacity || 0.14,
-        });
-      }
-    }
+          // Top-right corner
+          {
+            start: { x: xRightPt + gapPt, y: yTopPt },
+            end: { x: xRightPt + gapPt + lenPt, y: yTopPt },
+          },
+          {
+            start: { x: xRightPt, y: yTopPt + gapPt },
+            end: { x: xRightPt, y: yTopPt + gapPt + lenPt },
+          },
+          // Bottom-left corner
+          {
+            start: { x: xLeftPt - gapPt - lenPt, y: yBottomPt },
+            end: { x: xLeftPt - gapPt, y: yBottomPt },
+          },
+          {
+            start: { x: xLeftPt, y: yBottomPt - gapPt - lenPt },
+            end: { x: xLeftPt, y: yBottomPt - gapPt },
+          },
+          // Bottom-right corner
+          {
+            start: { x: xRightPt + gapPt, y: yBottomPt },
+            end: { x: xRightPt + gapPt + lenPt, y: yBottomPt },
+          },
+          {
+            start: { x: xRightPt, y: yBottomPt - gapPt - lenPt },
+            end: { x: xRightPt, y: yBottomPt - gapPt },
+          },
+        ];
 
-    // 2. Draw Elements
-    for (const el of elements) {
-      const xPt = trimLeftPt + el.xMm * MM_TO_PT;
-      const wPt = el.widthMm * MM_TO_PT;
-      const hPt = el.heightMm * MM_TO_PT;
-      const yPt = trimBottomPt + trimHeightPt - (el.yMm + el.heightMm) * MM_TO_PT;
-
-      if (el.type === "shape") {
-        if (el.shapeVariant === "frame") {
-          const cStroke = parseHexToRgb(el.strokeColor || "#C9A96E");
-          page.drawRectangle({
-            x: xPt,
-            y: yPt,
-            width: wPt,
-            height: hPt,
-            borderColor: rgb(cStroke.r, cStroke.g, cStroke.b),
-            borderWidth: (el.strokeWidthMm || 0.35) * MM_TO_PT,
-          });
-        } else {
-          const cFill = parseHexToRgb(el.fillColor || "#0D2B22");
-          page.drawRectangle({
-            x: xPt,
-            y: yPt,
-            width: wPt,
-            height: hPt,
-            color: rgb(cFill.r, cFill.g, cFill.b),
-          });
-        }
-      } else if (el.type === "line") {
-        const cFill = parseHexToRgb(el.fillColor || "#C9A96E");
-        page.drawRectangle({
-          x: xPt,
-          y: yPt,
-          width: wPt,
-          height: Math.max(hPt, 0.35 * MM_TO_PT),
-          color: rgb(cFill.r, cFill.g, cFill.b),
-        });
-      } else if (el.type === "monogram") {
-        const cFill = parseHexToRgb(el.fillColor || "#133B2E");
-        const cStroke = parseHexToRgb(el.strokeColor || "#C9A96E");
-        const cText = parseHexToRgb(el.color || "#C9A96E");
-        if (el.badgeStyle === "hezlon-skyline-crest") {
-          page.drawRectangle({
-            x: xPt + wPt * 0.2,
-            y: yPt + hPt * 0.1,
-            width: wPt * 0.22,
-            height: hPt * 0.55,
-            color: rgb(cText.r, cText.g, cText.b),
-          });
-          page.drawRectangle({
-            x: xPt + wPt * 0.45,
-            y: yPt + hPt * 0.1,
-            width: wPt * 0.1,
-            height: hPt * 0.8,
-            color: rgb(1, 1, 1),
-          });
-          page.drawRectangle({
-            x: xPt + wPt * 0.58,
-            y: yPt + hPt * 0.1,
-            width: wPt * 0.22,
-            height: hPt * 0.65,
-            color: rgb(cText.r, cText.g, cText.b),
-          });
-        } else {
-          if (el.badgeStyle === "square-architectural") {
-            page.drawRectangle({
-              x: xPt,
-              y: yPt,
-              width: wPt,
-              height: hPt,
-              color: rgb(cFill.r, cFill.g, cFill.b),
-              borderColor: rgb(cStroke.r, cStroke.g, cStroke.b),
-              borderWidth: 1,
-            });
-          } else {
-            page.drawCircle({
-              x: xPt + wPt / 2,
-              y: yPt + hPt / 2,
-              size: Math.min(wPt, hPt) / 2,
-              color: rgb(cFill.r, cFill.g, cFill.b),
-              borderColor: rgb(cStroke.r, cStroke.g, cStroke.b),
-              borderWidth: 1,
-            });
-          }
-          const mChar = (el.monogramText || "H").slice(0, 2);
-          const fSize = Math.min(wPt, hPt) * 0.52;
-          const mWidth = fontSerifBold.widthOfTextAtSize(mChar, fSize);
-          page.drawText(mChar, {
-            x: xPt + (wPt - mWidth) / 2,
-            y: yPt + hPt / 2 - fSize * 0.34,
-            size: fSize,
-            font: fontSerifBold,
-            color: rgb(cText.r, cText.g, cText.b),
-          });
-        }
-      } else if (el.type === "icon") {
-        const cFill = parseHexToRgb(el.fillColor || "#09261E");
-        const cStroke = parseHexToRgb(el.strokeColor || "#D4A84F");
-        if (
-          el.badgeStyle === "solid-circle" ||
-          el.badgeStyle === "gold-ring-icon"
-        ) {
-          page.drawCircle({
-            x: xPt + wPt / 2,
-            y: yPt + hPt / 2,
-            size: Math.min(wPt, hPt) / 2,
-            color: rgb(cFill.r, cFill.g, cFill.b),
-            borderColor:
-              el.badgeStyle === "gold-ring-icon"
-                ? rgb(cStroke.r, cStroke.g, cStroke.b)
-                : undefined,
-            borderWidth: el.badgeStyle === "gold-ring-icon" ? 0.8 : 0,
-          });
-        }
-      } else if ((el.type === "photo" || el.type === "logo") && el.imageUrl) {
-        const imgBuf = await resolveImageBuffer(el.imageUrl);
-        if (imgBuf) {
-          try {
-            const pdfImg = await pdfDoc.embedPng(imgBuf);
-            page.drawImage(pdfImg, {
-              x: xPt,
-              y: yPt,
-              width: wPt,
-              height: hPt,
-            });
-            if (el.badgeStyle === "circle-gold") {
-              const cStroke = parseHexToRgb(el.strokeColor || "#C9A24D");
-              page.drawCircle({
-                x: xPt + wPt / 2,
-                y: yPt + hPt / 2,
-                size: Math.min(wPt, hPt) / 2,
-                borderColor: rgb(cStroke.r, cStroke.g, cStroke.b),
-                borderWidth: 1.4,
-              });
-            }
-          } catch {
-            // ignore unsupported image format
-          }
-        }
-      } else if (el.type === "qr") {
-        const qrBuf = await generatePermanentQrBuffer({
-          url: spec.qrDestinationUrl,
-          foregroundColor: el.qrForeground || "#0D2B22",
-          backgroundColor: el.qrBackground || "#FFFFFF",
-          errorCorrectionLevel: "H",
-          sizePx: 1024,
-        });
-        const qrImg = await pdfDoc.embedPng(qrBuf);
-
-        if (
-          el.qrFrameStyle === "thin-gold" ||
-          el.qrFrameStyle === "rounded-gold"
-        ) {
-          const cGold = parseHexToRgb("#C9A96E");
-          const cBg = parseHexToRgb(el.qrBackground || "#FFFFFF");
-          const pad = 0.8 * MM_TO_PT;
-          page.drawRectangle({
-            x: xPt - pad,
-            y: yPt - pad,
-            width: wPt + pad * 2,
-            height: hPt + pad * 2,
-            color: rgb(cBg.r, cBg.g, cBg.b),
-            borderColor: rgb(cGold.r, cGold.g, cGold.b),
-            borderWidth: 0.9,
-          });
-        }
-        page.drawImage(qrImg, {
-          x: xPt,
-          y: yPt,
-          width: wPt,
-          height: hPt,
-        });
-      } else if (el.type === "text" && el.text) {
-        const isUnmodifiedMaster =
-          Boolean(el.defaultMasterText) &&
-          el.text.trim() === el.defaultMasterText?.trim();
-        if (!isUnmodifiedMaster) {
-          if (el.fillColor) {
-            const cMask = parseHexToRgb(el.fillColor);
-            page.drawRectangle({
-              x: xPt,
-              y: yPt,
-              width: wPt,
-              height: hPt,
-              color: rgb(cMask.r, cMask.g, cMask.b),
-            });
-          }
-          const isSerif = [
-            "Playfair Display",
-            "Cormorant Garamond",
-            "Cinzel",
-          ].includes(el.fontFamily || "");
-          const isMono = el.fontFamily === "JetBrains Mono";
-          const isBold = ["600", "700", "800"].includes(el.fontWeight || "500");
-
-          const chosenFont = isMono
-            ? fontMono
-            : isSerif
-            ? el.fontStyle === "italic"
-              ? fontSerifItalic
-              : isBold
-              ? fontSerifBold
-              : fontSerifRegular
-            : isBold
-            ? fontSansBold
-            : fontSansRegular;
-
-          const fontSizePt = el.fontSizePt || 8;
-          const cText = parseHexToRgb(el.color || "#FFFFFF");
-          const lines = el.text.split("\n");
-          const topY = trimBottomPt + trimHeightPt - el.yMm * MM_TO_PT;
-
-          lines.forEach((rawLine, lineIdx) => {
-            const lineText =
-              el.textTransform === "uppercase"
-                ? rawLine.toUpperCase()
-                : el.textTransform === "lowercase"
-                ? rawLine.toLowerCase()
-                : rawLine;
-            const cleanLine = lineText.replace(/[^\x20-\x7E•]/g, " ");
-            const textWidth = chosenFont.widthOfTextAtSize(
-              cleanLine,
-              fontSizePt
-            );
-
-            let drawX = xPt;
-            if (el.textAlign === "center") {
-              drawX = xPt + (wPt - textWidth) / 2;
-            } else if (el.textAlign === "right") {
-              drawX = xPt + wPt - textWidth;
-            }
-
-            const drawY = topY - fontSizePt - lineIdx * (fontSizePt * 1.28);
-            page.drawText(cleanLine, {
-              x: drawX,
-              y: drawY,
-              size: fontSizePt,
-              font: chosenFont,
-              color: rgb(cText.r, cText.g, cText.b),
-            });
+        for (const seg of cropSegments) {
+          page.drawLine({
+            start: seg.start,
+            end: seg.end,
+            thickness: 0.35,
+            color: rgb(0.1, 0.1, 0.1),
           });
         }
       }
     }
-
-    // 3. Draw Printer Crop Marks, Trim Marks & Production Job Slug
-    const markLenPt = 4.5 * MM_TO_PT;
-    const markGapPt = (spec.bleedMm + 0.8) * MM_TO_PT;
-    const trimRightPt = trimLeftPt + trimWidthPt;
-    const trimTopPt = trimBottomPt + trimHeightPt;
-
-    const cropLines = [
-      {
-        start: { x: trimLeftPt - markGapPt - markLenPt, y: trimTopPt },
-        end: { x: trimLeftPt - markGapPt, y: trimTopPt },
-      },
-      {
-        start: { x: trimLeftPt, y: trimTopPt + markGapPt },
-        end: { x: trimLeftPt, y: trimTopPt + markGapPt + markLenPt },
-      },
-      {
-        start: { x: trimRightPt + markGapPt, y: trimTopPt },
-        end: { x: trimRightPt + markGapPt + markLenPt, y: trimTopPt },
-      },
-      {
-        start: { x: trimRightPt, y: trimTopPt + markGapPt },
-        end: { x: trimRightPt, y: trimTopPt + markGapPt + markLenPt },
-      },
-      {
-        start: { x: trimLeftPt - markGapPt - markLenPt, y: trimBottomPt },
-        end: { x: trimLeftPt - markGapPt, y: trimBottomPt },
-      },
-      {
-        start: { x: trimLeftPt, y: trimBottomPt - markGapPt - markLenPt },
-        end: { x: trimLeftPt, y: trimBottomPt - markGapPt },
-      },
-      {
-        start: { x: trimRightPt + markGapPt, y: trimBottomPt },
-        end: { x: trimRightPt + markGapPt + markLenPt, y: trimBottomPt },
-      },
-      {
-        start: { x: trimRightPt, y: trimBottomPt - markGapPt - markLenPt },
-        end: { x: trimRightPt, y: trimBottomPt - markGapPt },
-      },
-    ];
-
-    for (const cl of cropLines) {
-      page.drawLine({
-        start: cl.start,
-        end: cl.end,
-        thickness: 0.4,
-        color: rgb(0, 0, 0),
-      });
-    }
-
-    const slugText = `HEZLON BUILDING SOLUTIONS | ${spec.designName.toUpperCase()} (${side}) | TRIM: ${
-      spec.widthMm
-    }x${spec.heightMm}mm | BLEED: ${spec.bleedMm}mm | FINISH: ${spec.paperFinish}`;
-    page.drawText(slugText, {
-      x: trimLeftPt,
-      y: 2.2 * MM_TO_PT,
-      size: 4.5,
-      font: fontMono,
-      color: rgb(0.3, 0.3, 0.3),
-    });
-
-    const cmykSwatches = [
-      rgb(0, 0.68, 0.94),
-      rgb(0.93, 0, 0.55),
-      rgb(1, 0.95, 0),
-      rgb(0.08, 0.08, 0.08),
-      rgb(0.05, 0.17, 0.13),
-      rgb(0.79, 0.66, 0.43),
-    ];
-    cmykSwatches.forEach((swatchColor, idx) => {
-      page.drawRectangle({
-        x: trimRightPt - (cmykSwatches.length - idx) * 3.5 * MM_TO_PT,
-        y: pageHeightPt - 4.5 * MM_TO_PT,
-        width: 3 * MM_TO_PT,
-        height: 2 * MM_TO_PT,
-        color: swatchColor,
-      });
-    });
   }
 
   return await pdfDoc.save();

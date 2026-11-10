@@ -14,6 +14,7 @@ import {
   FlipHorizontal,
   CheckCircle2,
   Sparkles,
+  Eye,
 } from "lucide-react";
 import { CardCanvasRenderer } from "@/components/studio/CardCanvasRenderer";
 import {
@@ -82,15 +83,19 @@ export default function MyDesignsPage() {
     loadDesigns();
   };
 
-  const handleDownloadPdf = async (design: SavedDesignItem) => {
-    setBusyId(design.id);
+  const handleDownloadPdf = async (
+    design: SavedDesignItem,
+    mode: "PREVIEW" | "PRINT_READY" = "PREVIEW"
+  ) => {
+    setBusyId(`${design.id}-${mode}`);
     try {
+      const format = mode === "PREVIEW" ? "PDF_PREVIEW" : "PDF_PRINT_READY";
       const res = await fetch("/api/admin/export-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           designId: design.id,
-          format: "PDF_COMPLETE",
+          format,
         }),
       });
       if (res.ok) {
@@ -98,9 +103,10 @@ export default function MyDesignsPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
+        const suffix = mode === "PREVIEW" ? "preview" : "print-ready-a4";
         a.download = `${design.name
           .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")}-print-ready.pdf`;
+          .replace(/[^a-z0-9]+/g, "-")}-${suffix}.pdf`;
         a.click();
         URL.revokeObjectURL(url);
       }
@@ -273,12 +279,23 @@ export default function MyDesignsPage() {
                     </button>
                     <button
                       type="button"
-                      disabled={busyId === d.id}
-                      onClick={() => handleDownloadPdf(d)}
-                      className="py-2 px-3 rounded-xl border border-forest-900 text-forest-900 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-forest-50 transition"
+                      disabled={busyId === `${d.id}-PREVIEW`}
+                      onClick={() => handleDownloadPdf(d, "PREVIEW")}
+                      className="py-2 px-2.5 rounded-xl border border-charcoal-200 text-charcoal-800 font-bold text-xs flex items-center justify-center gap-1 hover:bg-cream transition"
+                      title="Download Clean 2-Page Preview Proof (90x50mm)"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-gold-700" />
+                      <span>Preview</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === `${d.id}-PRINT_READY`}
+                      onClick={() => handleDownloadPdf(d, "PRINT_READY")}
+                      className="py-2 px-2.5 rounded-xl border border-forest-900 text-forest-900 font-bold text-xs flex items-center justify-center gap-1 hover:bg-forest-50 transition"
+                      title="Download A4 8-Up Print-Ready PDF with Bleed & Crop Marks"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>PDF</span>
+                      <span>Print PDF</span>
                     </button>
                     <button
                       type="button"

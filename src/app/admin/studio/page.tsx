@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { CardCanvasRenderer } from "@/components/studio/CardCanvasRenderer";
 import { Card3DPreview } from "@/components/studio/Card3DPreview";
+import { PdfExportModal } from "@/components/studio/PdfExportModal";
 import { HEZLON_TEMPLATES } from "@/lib/templates-catalog";
 import {
   CanvasElement,
@@ -143,6 +144,9 @@ function StudioEditorContent() {
   const [saving, setSaving] = useState(false);
   const [lastSavedText, setLastSavedText] = useState<string>("Ready");
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [duplexFlipMode, setDuplexFlipMode] = useState<"LONG_EDGE" | "SHORT_EDGE">("LONG_EDGE");
+  const [exportSuccessBanner, setExportSuccessBanner] = useState<string | null>(null);
   const [validationReport, setValidationReport] =
     useState<PrintValidationReport | null>(null);
   const [aiRecommendationNote, setAiRecommendationNote] = useState<string>("");
@@ -533,6 +537,10 @@ function StudioEditorContent() {
   // Export Print-Ready Production File
   const handleExportAsset = async (
     format:
+      | "PDF_PREVIEW"
+      | "PDF_PREVIEW_FRONT"
+      | "PDF_PREVIEW_BACK"
+      | "PDF_PRINT_READY"
       | "PDF_COMPLETE"
       | "PDF_FRONT"
       | "PDF_BACK"
@@ -542,6 +550,7 @@ function StudioEditorContent() {
       | "SVG_BACK"
   ) => {
     setExportingFormat(format);
+    setExportSuccessBanner(null);
     try {
       const res = await fetch("/api/admin/export-pdf", {
         method: "POST",
@@ -561,7 +570,9 @@ function StudioEditorContent() {
           backBg,
           frontElements,
           backElements,
+          flipMode: duplexFlipMode,
           includeBleed: true,
+          disposition: "attachment",
         }),
       });
 
@@ -575,11 +586,15 @@ function StudioEditorContent() {
           : format.startsWith("PNG")
           ? "png"
           : "svg";
-        a.download = `${designName
+        const filename = `${designName
           .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")}-${format.toLowerCase()}.${ext}`;
+          .replace(/[^a-z0-9]+/g, "-")}-${format.toLowerCase().replace(/_/g, "-")}.${ext}`;
+        a.download = filename;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        setExportSuccessBanner(`Successfully generated & downloaded ${filename}`);
       }
     } finally {
       setExportingFormat(null);
@@ -796,16 +811,11 @@ function StudioEditorContent() {
 
           <button
             type="button"
-            disabled={Boolean(exportingFormat)}
-            onClick={() => handleExportAsset("PDF_COMPLETE")}
+            onClick={() => setIsPdfModalOpen(true)}
             className="px-4 py-2 rounded-xl bg-gold text-forest-950 font-bold text-xs uppercase tracking-wider hover:bg-gold-300 transition flex items-center gap-1.5 shadow-gold-glow"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>
-              {exportingFormat === "PDF_COMPLETE"
-                ? "Generating PDF..."
-                : "Export Print PDF"}
-            </span>
+            <Eye className="w-3.5 h-3.5" />
+            <span>PDF Preview &amp; Export</span>
           </button>
 
           <button
@@ -1662,58 +1672,131 @@ function StudioEditorContent() {
                 </div>
 
                 {/* All Production Export Formats */}
-                <div className="pt-2 space-y-1.5">
+                <div className="pt-2 space-y-2">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-charcoal-500">
-                    Download Production Files
+                    Production &amp; Preview PDF
                   </div>
+
+                  {exportSuccessBanner && (
+                    <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="truncate">{exportSuccessBanner}</span>
+                    </div>
+                  )}
+
+                  {/* Primary Modal Launcher */}
                   <button
                     type="button"
-                    onClick={() => handleExportAsset("PDF_COMPLETE")}
-                    className="w-full py-2 px-3 rounded-xl bg-forest-900 text-gold font-bold text-xs flex items-center justify-between"
+                    onClick={() => setIsPdfModalOpen(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-gold text-forest-950 font-bold text-xs flex items-center justify-between shadow-sm hover:bg-gold-300 transition"
                   >
-                    <span>Complete Print-Ready PDF (Front+Back)</span>
-                    <Download className="w-3.5 h-3.5" />
+                    <span className="flex items-center gap-1.5">
+                      <Eye className="w-3.5 h-3.5" />
+                      Open Live PDF Preview &amp; Inspector
+                    </span>
+                    <Sparkles className="w-3.5 h-3.5 text-forest-950" />
                   </button>
-                  <div className="grid grid-cols-2 gap-1.5">
+
+                  {/* Download Preview PDF */}
+                  <button
+                    type="button"
+                    disabled={Boolean(exportingFormat)}
+                    onClick={() => handleExportAsset("PDF_PREVIEW")}
+                    className="w-full py-2 px-3 rounded-xl bg-forest-900 text-gold font-bold text-xs flex items-center justify-between hover:bg-forest-950 transition"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Download className="w-3.5 h-3.5" />
+                      Download Preview PDF (2-Page Proof)
+                    </span>
+                    <span className="text-[10px] text-cream/70 font-mono">90×50mm</span>
+                  </button>
+
+                  {/* Download Print-Ready PDF */}
+                  <button
+                    type="button"
+                    disabled={Boolean(exportingFormat)}
+                    onClick={() => handleExportAsset("PDF_PRINT_READY")}
+                    className="w-full py-2 px-3 rounded-xl bg-forest-950 text-cream font-bold text-xs flex items-center justify-between border border-gold/40 hover:bg-black transition"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Printer className="w-3.5 h-3.5 text-gold" />
+                      Download Print-Ready PDF (A4 8-Up)
+                    </span>
+                    <span className="text-[10px] text-gold font-mono">8 Cards</span>
+                  </button>
+
+                  {/* Duplex Flip Selector */}
+                  <div className="p-2 rounded-xl bg-cream/60 border border-charcoal-200 space-y-1 text-xs">
+                    <div className="text-[10px] font-bold text-charcoal-600 uppercase">
+                      Duplex Flip Orientation
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setDuplexFlipMode("LONG_EDGE")}
+                        className={`py-1 px-1.5 rounded-lg text-[11px] font-semibold transition ${
+                          duplexFlipMode === "LONG_EDGE"
+                            ? "bg-forest-900 text-gold font-bold"
+                            : "bg-white text-charcoal-700 hover:bg-cream"
+                        }`}
+                      >
+                        Long Edge (Standard)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDuplexFlipMode("SHORT_EDGE")}
+                        className={`py-1 px-1.5 rounded-lg text-[11px] font-semibold transition ${
+                          duplexFlipMode === "SHORT_EDGE"
+                            ? "bg-forest-900 text-gold font-bold"
+                            : "bg-white text-charcoal-700 hover:bg-cream"
+                        }`}
+                      >
+                        Short Edge (Calendar)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Single Sides & Raster Formats */}
+                  <div className="grid grid-cols-2 gap-1.5 pt-1">
                     <button
                       type="button"
                       onClick={() => handleExportAsset("PDF_FRONT")}
-                      className="py-1.5 px-2.5 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
+                      className="py-1.5 px-2 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
                     >
                       Front PDF
                     </button>
                     <button
                       type="button"
                       onClick={() => handleExportAsset("PDF_BACK")}
-                      className="py-1.5 px-2.5 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
+                      className="py-1.5 px-2 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
                     >
                       Back PDF
                     </button>
                     <button
                       type="button"
                       onClick={() => handleExportAsset("PNG_FRONT")}
-                      className="py-1.5 px-2.5 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
+                      className="py-1.5 px-2 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
                     >
                       Front PNG (600dpi)
                     </button>
                     <button
                       type="button"
                       onClick={() => handleExportAsset("PNG_BACK")}
-                      className="py-1.5 px-2.5 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
+                      className="py-1.5 px-2 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
                     >
                       Back PNG (600dpi)
                     </button>
                     <button
                       type="button"
                       onClick={() => handleExportAsset("SVG_FRONT")}
-                      className="py-1.5 px-2.5 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
+                      className="py-1.5 px-2 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
                     >
                       Front SVG Vector
                     </button>
                     <button
                       type="button"
                       onClick={() => handleExportAsset("SVG_BACK")}
-                      className="py-1.5 px-2.5 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
+                      className="py-1.5 px-2 rounded-lg border border-charcoal-200 text-xs font-semibold hover:bg-cream"
                     >
                       Back SVG Vector
                     </button>
@@ -2228,6 +2311,25 @@ function StudioEditorContent() {
           )}
         </div>
       </div>
+
+      {/* Professional PDF Export & Proofing Modal */}
+      <PdfExportModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        designId={designId}
+        designName={designName}
+        widthMm={widthMm}
+        heightMm={heightMm}
+        bleedMm={bleedMm}
+        safeMarginMm={safeMarginMm}
+        isDoubleSided={isDoubleSided}
+        paperFinish={paperFinish}
+        cornerStyle={cornerStyle}
+        frontBg={frontBg}
+        backBg={backBg}
+        frontElements={frontElements}
+        backElements={backElements}
+      />
     </div>
   );
 }

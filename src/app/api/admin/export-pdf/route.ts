@@ -5,6 +5,9 @@ import { logAuditEvent, requireAdminApi } from "@/lib/auth";
 import { resolveQrDestinationUrl } from "@/lib/qr-destination";
 import {
   CardPrintSpec,
+  DuplexFlipMode,
+  calculateA4SheetLayout,
+  generatePreviewPdf,
   generatePrintReadyPdf,
   renderCardSideSvg,
   validateCardForPrint,
@@ -20,13 +23,22 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const format:
       | "VALIDATE_ONLY"
+      | "PDF_PREVIEW"
+      | "PDF_PREVIEW_FRONT"
+      | "PDF_PREVIEW_BACK"
+      | "PDF_PRINT_READY"
       | "PDF_COMPLETE"
       | "PDF_FRONT"
       | "PDF_BACK"
       | "PNG_FRONT"
       | "PNG_BACK"
       | "SVG_FRONT"
-      | "SVG_BACK" = body.format || "PDF_COMPLETE";
+      | "SVG_BACK" = body.format || "PDF_PREVIEW";
+
+    const flipMode: DuplexFlipMode =
+      body.flipMode === "SHORT_EDGE" ? "SHORT_EDGE" : "LONG_EDGE";
+    const dispositionType: "inline" | "attachment" =
+      body.disposition === "inline" ? "inline" : "attachment";
 
     const qrConfig = await prisma.qRCode.findUnique({
       where: { id: "hezlon-permanent-qr" },
@@ -117,9 +129,10 @@ export async function POST(req: NextRequest) {
     }
 
     const validation = validateCardForPrint(spec);
+    const layout = calculateA4SheetLayout(spec, flipMode);
 
     if (format === "VALIDATE_ONLY") {
-      return NextResponse.json({ validation });
+      return NextResponse.json({ validation, layout });
     }
 
     const cleanFileName = spec.designName
@@ -134,7 +147,7 @@ export async function POST(req: NextRequest) {
         status: 200,
         headers: {
           "Content-Type": "image/svg+xml",
-          "Content-Disposition": `attachment; filename="${cleanFileName}-${side.toLowerCase()}.svg"`,
+          "Content-Disposition": `${dispositionType}; filename="${cleanFileName}-${side.toLowerCase()}.svg"`,
         },
       });
     }
@@ -151,33 +164,65 @@ export async function POST(req: NextRequest) {
         status: 200,
         headers: {
           "Content-Type": "image/png",
-          "Content-Disposition": `attachment; filename="${cleanFileName}-${side.toLowerCase()}-600dpi.png"`,
+          "Content-Disposition": `${dispositionType}; filename="${cleanFileName}-${side.toLowerCase()}-600dpi.png"`,
         },
       });
     }
 
-    // PDF Exports
-    const pdfMode =
+    // PDF EXPORTS: MODE A (Clean 2-page Preview) vs MODE B (A4 8-Up Print-Ready Imposition)
+    const isPreviewFormat =
+      format === "PDF_PREVIEW" ||
+      format === "PDF_PREVIEW_FRONT" ||
+      format === "PDF_PREVIEW_BACK";
+
+    if (isPreviewFormat) {
+      const previewMode =
+        format === "PDF_PREVIEW_FRONT"
+          ? "FRONT"
+          : format === "PDF_PREVIEW_BACK"
+          ? "BACK"
+          : "COMPLETE";
+
+      const pdfBytes = await generatePreviewPdf(spec, previewMode);
+
+      await logAuditEvent({
+        action: "PREVIEW_PDF_EXPORTED",
+        entityType: "BusinessCardDesign",
+        entityId: body.designId || body.orderId || "live-export",
+        summary: `Exported ${previewMode} Clean Preview PDF for "${spec.designName}" (${spec.widthMm}x${spec.heightMm}mm trim)`,
+      });
+
+      return new NextResponse(Buffer.from(pdfBytes), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `${dispositionType}; filename="${cleanFileName}-preview-${previewMode.toLowerCase()}.pdf"`,
+        },
+      });
+    }
+
+    // MODE B: Print-Ready Imposition on A4 Sheet
+    const printMode =
       format === "PDF_FRONT"
         ? "FRONT"
         : format === "PDF_BACK"
         ? "BACK"
         : "COMPLETE";
 
-    const pdfBytes = await generatePrintReadyPdf(spec, pdfMode);
+    const pdfBytes = await generatePrintReadyPdf(spec, printMode, { flipMode });
 
     await logAuditEvent({
       action: "PRODUCTION_PDF_EXPORTED",
       entityType: "BusinessCardDesign",
       entityId: body.designId || body.orderId || "live-export",
-      summary: `Exported ${pdfMode} Print-Ready PDF for "${spec.designName}" (${spec.widthMm}x${spec.heightMm}mm, ${spec.bleedMm}mm bleed)`,
+      summary: `Exported ${printMode} A4 Print-Ready PDF for "${spec.designName}" (${layout.cardsPerSheet} cards/sheet, ${flipMode} duplex)`,
     });
 
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${cleanFileName}-print-ready-${pdfMode.toLowerCase()}.pdf"`,
+        "Content-Disposition": `${dispositionType}; filename="${cleanFileName}-print-ready-a4-${printMode.toLowerCase()}.pdf"`,
       },
     });
   } catch (error) {

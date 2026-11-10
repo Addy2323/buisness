@@ -10,6 +10,7 @@ import {
   Plus,
   FileText,
   Sparkles,
+  Eye,
 } from "lucide-react";
 import { HEZLON_TEMPLATES } from "@/lib/templates-catalog";
 
@@ -267,15 +268,19 @@ function PrintOrdersContent() {
     await loadAll();
   };
 
-  const handleDownloadOrderPdf = async (order: PrintOrderRecord) => {
-    setDownloadingId(order.id);
+  const handleDownloadOrderPdf = async (
+    order: PrintOrderRecord,
+    mode: "PREVIEW" | "PRINT_READY" = "PRINT_READY"
+  ) => {
+    setDownloadingId(`${order.id}-${mode}`);
     try {
+      const format = mode === "PREVIEW" ? "PDF_PREVIEW" : "PDF_PRINT_READY";
       const res = await fetch("/api/admin/export-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId: order.id,
-          format: "PDF_COMPLETE",
+          format,
         }),
       });
       if (res.ok) {
@@ -283,7 +288,8 @@ function PrintOrdersContent() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${order.orderReference}-production-print-ready.pdf`;
+        const suffix = mode === "PREVIEW" ? "preview" : "a4-print-ready";
+        a.download = `${order.orderReference}-${suffix}.pdf`;
         a.click();
         URL.revokeObjectURL(url);
       }
@@ -730,17 +736,30 @@ function PrintOrdersContent() {
                       </select>
                     </td>
                     <td className="py-3 px-3 text-right">
-                      <button
-                        type="button"
-                        disabled={downloadingId === ord.id}
-                        onClick={() => handleDownloadOrderPdf(ord)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-forest-900 text-gold font-bold text-[11px] hover:bg-forest-800 transition"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>
-                          {downloadingId === ord.id ? "Building..." : "Download PDF"}
-                        </span>
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          disabled={downloadingId === `${ord.id}-PREVIEW`}
+                          onClick={() => handleDownloadOrderPdf(ord, "PREVIEW")}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-charcoal-200 text-charcoal-800 font-bold text-[11px] hover:bg-cream transition"
+                          title="Download Clean 2-Page Preview Proof"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-gold-700" />
+                          <span>Preview</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={downloadingId === `${ord.id}-PRINT_READY`}
+                          onClick={() => handleDownloadOrderPdf(ord, "PRINT_READY")}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-forest-900 text-gold font-bold text-[11px] hover:bg-forest-800 transition"
+                          title="Download A4 8-Up Commercial Print PDF"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>
+                            {downloadingId === `${ord.id}-PRINT_READY` ? "Building..." : "Print A4"}
+                          </span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
