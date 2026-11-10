@@ -279,43 +279,45 @@ export default function HezlonDigitalProfilePage() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <div className="min-h-screen bg-cream text-forest-950 selection:bg-gold selection:text-forest-950">
+    <div className="min-h-screen w-full overflow-x-hidden bg-cream text-forest-950 selection:bg-gold selection:text-forest-950">
       {/* ================================================================= */}
       {/* 1. HEADER                                                         */}
       {/* ================================================================= */}
       <header className="sticky top-0 z-50 bg-forest-950/95 backdrop-blur-md border-b border-gold/25 text-cream">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
-          {/* Brand Logo & Company Name */}
-          <a
-            href="#top"
-            className="flex items-center gap-3.5 group focus:outline-none"
-          >
-            {data?.company?.logoUrl ? (
-              <div className="w-11 h-11 rounded-xl bg-white border border-gold p-1 flex items-center justify-center shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={data.company.logoUrl}
-                  alt={companyName}
-                  className="w-full h-full object-contain"
-                />
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-2.5 sm:py-0 sm:h-20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-4">
+          {/* Top Row on Mobile: Brand Logo & Company Name */}
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <a
+              href="#top"
+              className="flex items-center gap-2.5 sm:gap-3.5 group focus:outline-none min-w-0"
+            >
+              {data?.company?.logoUrl ? (
+                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-white border border-gold p-1 flex items-center justify-center shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={data.company.logoUrl}
+                    alt={companyName}
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-forest-900 border-2 border-gold flex items-center justify-center font-serif font-bold text-lg sm:text-xl text-gold shadow-gold-glow shrink-0 group-hover:scale-105 transition">
+                  H
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="font-serif font-bold text-sm sm:text-lg tracking-wide text-cream leading-tight truncate">
+                  {companyName}
+                </div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-[0.12em] sm:tracking-[0.2em] text-gold font-medium truncate mt-0.5">
+                  {professionalTitle}
+                </div>
               </div>
-            ) : (
-              <div className="w-11 h-11 rounded-xl bg-forest-900 border-2 border-gold flex items-center justify-center font-serif font-bold text-xl text-gold shadow-gold-glow shrink-0 group-hover:scale-105 transition">
-                H
-              </div>
-            )}
-            <div>
-              <div className="font-serif font-bold text-base sm:text-lg tracking-wide text-cream leading-tight">
-                {companyName}
-              </div>
-              <div className="text-[11px] uppercase tracking-[0.2em] text-gold font-medium">
-                {professionalTitle}
-              </div>
-            </div>
-          </a>
+            </a>
+          </div>
 
           {/* Navigation Links (Desktop) */}
-          <nav className="hidden md:flex items-center gap-7 text-xs font-semibold uppercase tracking-widest text-cream/85">
+          <nav className="hidden md:flex items-center gap-7 text-xs font-semibold uppercase tracking-widest text-cream/85 shrink-0">
             <button
               type="button"
               onClick={() => scrollToSection("about")}
@@ -346,13 +348,13 @@ export default function HezlonDigitalProfilePage() {
             </button>
           </nav>
 
-          {/* Language Selector */}
+          {/* Language Selector (Full-width 3-col pill on mobile, inline pill on desktop) */}
           <div
-            className="inline-flex items-center rounded-xl bg-forest-900 p-1 border border-gold/30"
+            className="grid grid-cols-3 sm:inline-flex items-center rounded-xl bg-forest-900 p-1 border border-gold/30 w-full sm:w-auto shrink-0"
             role="group"
             aria-label="Language Selector"
           >
-            <Globe2 className="w-3.5 h-3.5 text-gold ml-2 mr-1 hidden sm:inline" />
+            <Globe2 className="w-3.5 h-3.5 text-gold ml-2 mr-1 hidden sm:inline shrink-0" />
             {(
               [
                 { id: "BILINGUAL", label: "EN | SW" },
@@ -364,7 +366,7 @@ export default function HezlonDigitalProfilePage() {
                 key={option.id}
                 type="button"
                 onClick={() => setLang(option.id)}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold tracking-wider uppercase transition ${
+                className={`px-2 sm:px-2.5 py-1.5 rounded-lg text-[10px] sm:text-[11px] font-bold tracking-wider uppercase whitespace-nowrap text-center transition ${
                   lang === option.id
                     ? "bg-gold text-forest-950 shadow-sm"
                     : "text-cream/80 hover:text-gold"
@@ -395,20 +397,20 @@ export default function HezlonDigitalProfilePage() {
         />
         <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-gold/10 blur-3xl pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 lg:py-24 relative z-10">
-          <div className="grid lg:grid-cols-12 gap-10 lg:gap-12 items-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-20 lg:py-24 relative z-10">
+          <div className="grid lg:grid-cols-12 gap-8 sm:gap-10 lg:gap-12 items-center">
             {/* Hero Text Column */}
-            <div className="lg:col-span-7 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-forest-900/90 border border-gold/40 text-gold text-xs font-semibold uppercase tracking-[0.2em]">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Official Digital Company Profile</span>
+            <div className="lg:col-span-7 space-y-5 sm:space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-full bg-forest-900/90 border border-gold/40 text-gold text-[10px] sm:text-xs font-semibold uppercase tracking-[0.12em] sm:tracking-[0.2em] max-w-full">
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Official Digital Company Profile</span>
               </div>
 
-              <div className="space-y-2">
-                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-serif font-bold text-cream tracking-tight leading-tight">
+              <div className="space-y-1.5 sm:space-y-2">
+                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-serif font-bold text-cream tracking-tight leading-[1.15]">
                   {companyName}
                 </h1>
-                <p className="text-lg sm:text-2xl font-serif text-gold font-medium">
+                <p className="text-base sm:text-2xl font-serif text-gold font-medium">
                   {professionalTitle}
                 </p>
               </div>
@@ -432,46 +434,46 @@ export default function HezlonDigitalProfilePage() {
               </div>
 
               {/* Functional Hero Action Buttons */}
-              <div className="flex flex-wrap items-center gap-4 pt-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 pt-1 sm:pt-2">
                 <button
                   type="button"
                   onClick={() => scrollToSection("services")}
-                  className="px-6 py-3.5 rounded-xl bg-gold text-forest-950 font-bold text-xs sm:text-sm uppercase tracking-wider hover:bg-gold-300 transition shadow-gold-glow flex items-center gap-2"
+                  className="px-6 py-3.5 rounded-xl bg-gold text-forest-950 font-bold text-xs sm:text-sm uppercase tracking-wider hover:bg-gold-300 transition shadow-gold-glow flex items-center justify-center gap-2"
                 >
                   <span>
                     {lang === "SW"
                       ? "Tazama Huduma Zetu"
                       : "Explore Our Services"}
                   </span>
-                  <ArrowDownRight className="w-4 h-4" />
+                  <ArrowDownRight className="w-4 h-4 shrink-0" />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => scrollToSection("contact")}
-                  className="px-6 py-3.5 rounded-xl bg-forest-900 border border-gold/50 text-cream font-bold text-xs sm:text-sm uppercase tracking-wider hover:bg-forest-800 hover:border-gold transition flex items-center gap-2"
+                  className="px-6 py-3.5 rounded-xl bg-forest-900 border border-gold/50 text-cream font-bold text-xs sm:text-sm uppercase tracking-wider hover:bg-forest-800 hover:border-gold transition flex items-center justify-center gap-2"
                 >
                   <span>{lang === "SW" ? "Wasiliana Nasi" : "Contact Us"}</span>
                 </button>
               </div>
 
               {/* Location & Nationwide Badge */}
-              <div className="pt-2 flex flex-wrap items-center gap-4 text-xs text-cream/75">
-                <span className="inline-flex items-center gap-1.5">
-                  <MapPin className="w-4 h-4 text-gold" />
+              <div className="pt-1 sm:pt-2 flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-2.5 sm:gap-4 text-xs text-cream/80">
+                <span className="inline-flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-gold shrink-0" />
                   <span>{locationText}</span>
                 </span>
-                <span className="text-gold/40">•</span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Compass className="w-4 h-4 text-gold" />
-                  <span>{serviceAreaText}</span>
+                <span className="hidden sm:inline text-gold/40">•</span>
+                <span className="inline-flex items-start sm:items-center gap-2">
+                  <Compass className="w-4 h-4 text-gold shrink-0 mt-0.5 sm:mt-0" />
+                  <span className="leading-snug">{serviceAreaText}</span>
                 </span>
               </div>
             </div>
 
             {/* Hero Visual Showcase Column */}
             <div className="lg:col-span-5">
-              <div className="relative rounded-3xl overflow-hidden border-2 border-gold/40 shadow-2xl bg-forest-900">
+              <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden border-2 border-gold/40 shadow-2xl bg-forest-900">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={
@@ -479,19 +481,19 @@ export default function HezlonDigitalProfilePage() {
                     "/uploads/services/service-1-doors-windows.png"
                   }
                   alt="HEZLON Building Solutions Architectural Aluminium and Glass"
-                  className="w-full h-72 sm:h-96 object-cover"
+                  className="w-full h-64 sm:h-96 object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-forest-950 via-forest-950/20 to-transparent" />
-                <div className="absolute bottom-4 left-4 right-4 p-4 rounded-2xl bg-forest-950/90 backdrop-blur-md border border-gold/30 flex items-center justify-between">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-gold font-bold">
+                <div className="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 p-3.5 sm:p-4 rounded-2xl bg-forest-950/90 backdrop-blur-md border border-gold/30 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-[0.16em] sm:tracking-[0.2em] text-gold font-bold">
                       HEZLON WORKMANSHIP
                     </div>
-                    <div className="text-xs sm:text-sm font-serif font-bold text-cream mt-0.5">
+                    <div className="text-xs sm:text-sm font-serif font-bold text-cream mt-0.5 truncate">
                       Quality • Creativity • Reliability
                     </div>
                   </div>
-                  <div className="w-10 h-10 rounded-xl bg-gold/15 border border-gold/40 flex items-center justify-center text-gold">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gold/15 border border-gold/40 flex items-center justify-center text-gold shrink-0">
                     <ShieldCheck className="w-5 h-5" />
                   </div>
                 </div>
@@ -506,12 +508,12 @@ export default function HezlonDigitalProfilePage() {
       {/* ================================================================= */}
       <section
         id="about"
-        className="py-16 sm:py-20 bg-white border-b border-charcoal-100 scroll-mt-20"
+        className="py-12 sm:py-20 bg-white border-b border-charcoal-100 scroll-mt-28 sm:scroll-mt-20"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-3xl mx-auto text-center mb-12">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-forest-950 text-gold text-[11px] font-bold uppercase tracking-[0.2em] mb-3">
-              <Building2 className="w-3.5 h-3.5" />
+          <div className="max-w-3xl mx-auto text-center mb-8 sm:mb-12">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-forest-950 text-gold text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.14em] sm:tracking-[0.2em] mb-3">
+              <Building2 className="w-3.5 h-3.5 shrink-0" />
               <span>ABOUT US | KUHUSU SISI</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-serif font-bold text-forest-950">
@@ -524,29 +526,29 @@ export default function HezlonDigitalProfilePage() {
           </div>
 
           <div
-            className={`grid gap-6 ${
+            className={`grid gap-5 sm:gap-6 ${
               lang === "BILINGUAL"
                 ? "md:grid-cols-2"
                 : "max-w-3xl mx-auto grid-cols-1"
             }`}
           >
             {showEn && (
-              <div className="p-7 sm:p-8 rounded-3xl bg-cream/70 border border-gold/40 shadow-sm flex flex-col justify-between">
+              <div className="p-5 sm:p-8 rounded-2xl sm:rounded-3xl bg-cream/70 border border-gold/40 shadow-sm flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-gold/25">
-                    <span className="text-xs font-bold uppercase tracking-[0.2em] text-forest-900">
+                  <div className="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-gold/25">
+                    <span className="text-[11px] sm:text-xs font-bold uppercase tracking-[0.14em] sm:tracking-[0.2em] text-forest-900">
                       ABOUT US (ENGLISH)
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-forest-950 text-gold text-[10px] font-bold uppercase tracking-wider">
+                    <span className="px-2.5 py-0.5 rounded-full bg-forest-950 text-gold text-[10px] font-bold uppercase tracking-wider shrink-0">
                       EN
                     </span>
                   </div>
-                  <p className="text-base sm:text-lg text-forest-950 leading-relaxed font-normal">
+                  <p className="text-sm sm:text-lg text-forest-950 leading-relaxed font-normal">
                     {aboutEn}
                   </p>
                 </div>
-                <div className="mt-6 pt-4 border-t border-gold/20 text-xs font-semibold text-forest-800 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-gold-700" />
+                <div className="mt-5 sm:mt-6 pt-4 border-t border-gold/20 text-xs font-semibold text-forest-800 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-gold-700 shrink-0" />
                   <span>
                     HEZLON Building Solutions — Aluminium &amp; Glass
                     Specialists
@@ -556,22 +558,22 @@ export default function HezlonDigitalProfilePage() {
             )}
 
             {showSw && (
-              <div className="p-7 sm:p-8 rounded-3xl bg-forest-950 text-cream border border-gold/40 shadow-luxury flex flex-col justify-between">
+              <div className="p-5 sm:p-8 rounded-2xl sm:rounded-3xl bg-forest-950 text-cream border border-gold/40 shadow-luxury flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-gold/25">
-                    <span className="text-xs font-bold uppercase tracking-[0.2em] text-gold">
+                  <div className="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-gold/25">
+                    <span className="text-[11px] sm:text-xs font-bold uppercase tracking-[0.14em] sm:tracking-[0.2em] text-gold">
                       KUHUSU SISI (KISWAHILI)
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-gold text-forest-950 text-[10px] font-bold uppercase tracking-wider">
+                    <span className="px-2.5 py-0.5 rounded-full bg-gold text-forest-950 text-[10px] font-bold uppercase tracking-wider shrink-0">
                       SW
                     </span>
                   </div>
-                  <p className="text-base sm:text-lg text-cream/95 leading-relaxed font-normal">
+                  <p className="text-sm sm:text-lg text-cream/95 leading-relaxed font-normal">
                     {aboutSw}
                   </p>
                 </div>
-                <div className="mt-6 pt-4 border-t border-gold/20 text-xs font-semibold text-gold flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-gold" />
+                <div className="mt-5 sm:mt-6 pt-4 border-t border-gold/20 text-xs font-semibold text-gold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-gold shrink-0" />
                   <span>
                     HEZLON Building Solutions — Wataalamu wa Aluminium na Vioo
                   </span>
@@ -587,12 +589,12 @@ export default function HezlonDigitalProfilePage() {
       {/* ================================================================= */}
       <section
         id="services"
-        className="py-16 sm:py-20 bg-cream border-b border-charcoal-200 scroll-mt-20"
+        className="py-12 sm:py-20 bg-cream border-b border-charcoal-200 scroll-mt-28 sm:scroll-mt-20"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-3xl mx-auto text-center mb-12">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-forest-950 text-gold text-[11px] font-bold uppercase tracking-[0.2em] mb-3">
-              <Layers className="w-3.5 h-3.5" />
+          <div className="max-w-3xl mx-auto text-center mb-8 sm:mb-12">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-forest-950 text-gold text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.14em] sm:tracking-[0.2em] mb-3">
+              <Layers className="w-3.5 h-3.5 shrink-0" />
               <span>OUR SERVICES | HUDUMA ZETU</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-serif font-bold text-forest-950">
@@ -602,24 +604,24 @@ export default function HezlonDigitalProfilePage() {
                 ? "Huduma Zetu za Kitaalamu"
                 : "Our Services • Huduma Zetu"}
             </h2>
-            <p className="text-sm text-charcoal-600 mt-2">
+            <p className="text-xs sm:text-sm text-charcoal-600 mt-2">
               {lang === "SW"
                 ? "Tunatoa huduma kamili za aluminium, vioo na maboresho ya majengo kwa ubora wa hali ya juu."
                 : "Comprehensive aluminium, glass, interior fitting, and building improvement solutions."}
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-7">
             {servicesList.map((srv, index) => {
               const swTranslation =
                 srv.titleSw || srv.descriptionSw || srv.description;
               return (
                 <div
                   key={srv.id}
-                  className="group bg-white rounded-3xl overflow-hidden border border-charcoal-200/80 hover:border-gold shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col"
+                  className="group bg-white rounded-2xl sm:rounded-3xl overflow-hidden border border-charcoal-200/80 hover:border-gold shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col"
                 >
                   {/* Service Image */}
-                  <div className="relative h-52 bg-forest-950 overflow-hidden border-b border-gold/30">
+                  <div className="relative h-48 sm:h-52 bg-forest-950 overflow-hidden border-b border-gold/30">
                     {srv.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -639,14 +641,14 @@ export default function HezlonDigitalProfilePage() {
                   </div>
 
                   {/* Card Body */}
-                  <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
+                  <div className="p-5 sm:p-6 flex-1 flex flex-col justify-between space-y-4">
                     <div className="space-y-2.5">
                       {showEn && (
                         <div>
                           <div className="text-[10px] font-bold uppercase tracking-widest text-charcoal-400">
                             English
                           </div>
-                          <h3 className="text-lg font-serif font-bold text-forest-950 leading-snug">
+                          <h3 className="text-base sm:text-lg font-serif font-bold text-forest-950 leading-snug">
                             {srv.title}
                           </h3>
                         </div>
@@ -678,9 +680,9 @@ export default function HezlonDigitalProfilePage() {
                         )}
                     </div>
 
-                    <div className="pt-3 border-t border-charcoal-100 flex items-center justify-between text-[11px] font-semibold text-forest-800">
-                      <span>HEZLON Building Solutions</span>
-                      <span className="text-gold-700">✓ Verified Service</span>
+                    <div className="pt-3 border-t border-charcoal-100 flex items-center justify-between gap-2 text-[11px] font-semibold text-forest-800">
+                      <span className="truncate">HEZLON Building Solutions</span>
+                      <span className="text-gold-700 shrink-0">✓ Verified Service</span>
                     </div>
                   </div>
                 </div>
@@ -695,12 +697,12 @@ export default function HezlonDigitalProfilePage() {
       {/* ================================================================= */}
       <section
         id="commitment"
-        className="py-16 sm:py-20 bg-forest-950 text-cream border-b border-gold/30 scroll-mt-20"
+        className="py-12 sm:py-20 bg-forest-950 text-cream border-b border-gold/30 scroll-mt-28 sm:scroll-mt-20"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-3xl mx-auto text-center mb-12">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-forest-900 border border-gold/40 text-gold text-[11px] font-bold uppercase tracking-[0.2em] mb-3">
-              <Award className="w-3.5 h-3.5" />
+          <div className="max-w-3xl mx-auto text-center mb-8 sm:mb-12">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-forest-900 border border-gold/40 text-gold text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.14em] sm:tracking-[0.2em] mb-3">
+              <Award className="w-3.5 h-3.5 shrink-0" />
               <span>OUR COMMITMENT | AHADI YETU</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-serif font-bold text-cream">
@@ -710,24 +712,24 @@ export default function HezlonDigitalProfilePage() {
                 ? "Ahadi Yetu kwa Wateja"
                 : "Our Commitment • Ahadi Yetu"}
             </h2>
-            <p className="text-sm text-cream/75 mt-2">
+            <p className="text-xs sm:text-sm text-cream/75 mt-2">
               {lang === "SW"
                 ? "Nguzo nne zinazoongoza kila kazi tunayofanya katika HEZLON Building Solutions."
                 : "The four pillars guiding every project at HEZLON Building Solutions."}
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
             {COMMITMENTS.map((item) => {
               const IconComponent = item.icon;
               return (
                 <div
                   key={item.en}
-                  className="p-6 rounded-3xl bg-forest-900/90 border border-gold/30 hover:border-gold transition flex flex-col justify-between space-y-4 shadow-luxury"
+                  className="p-5 sm:p-6 rounded-2xl sm:rounded-3xl bg-forest-900/90 border border-gold/30 hover:border-gold transition flex flex-col justify-between space-y-4 shadow-luxury"
                 >
                   <div className="space-y-4">
-                    <div className="w-12 h-12 rounded-2xl bg-gold/15 border border-gold/40 text-gold flex items-center justify-center">
-                      <IconComponent className="w-6 h-6" />
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gold/15 border border-gold/40 text-gold flex items-center justify-center shrink-0">
+                      <IconComponent className="w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
 
                     {showEn && (
@@ -735,7 +737,7 @@ export default function HezlonDigitalProfilePage() {
                         <div className="text-[10px] uppercase tracking-widest text-cream/50 font-bold">
                           English
                         </div>
-                        <h3 className="text-xl font-serif font-bold text-cream mt-0.5">
+                        <h3 className="text-lg sm:text-xl font-serif font-bold text-cream mt-0.5">
                           {item.en}
                         </h3>
                         <p className="text-xs text-cream/75 mt-1.5 leading-relaxed">
@@ -753,7 +755,7 @@ export default function HezlonDigitalProfilePage() {
                         <div className="text-[10px] uppercase tracking-widest text-gold font-bold">
                           Kiswahili
                         </div>
-                        <div className="text-lg font-serif font-bold text-gold mt-0.5">
+                        <div className="text-base sm:text-lg font-serif font-bold text-gold mt-0.5">
                           {item.sw}
                         </div>
                         <p className="text-xs text-cream/80 mt-1.5 leading-relaxed">
@@ -764,7 +766,7 @@ export default function HezlonDigitalProfilePage() {
                   </div>
 
                   <div className="pt-2 flex items-center gap-1.5 text-[11px] text-gold font-semibold">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                     <span>HEZLON Standard</span>
                   </div>
                 </div>
@@ -779,13 +781,13 @@ export default function HezlonDigitalProfilePage() {
       {/* ================================================================= */}
       <section
         id="contact"
-        className="py-16 sm:py-20 bg-white scroll-mt-20"
+        className="py-12 sm:py-20 bg-white scroll-mt-28 sm:scroll-mt-20"
       >
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="rounded-3xl bg-forest-950 text-cream p-8 sm:p-12 border-2 border-gold/40 shadow-2xl relative overflow-hidden">
-            <div className="max-w-2xl mx-auto text-center space-y-3 mb-10">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-forest-900 border border-gold/40 text-gold text-[11px] font-bold uppercase tracking-[0.2em]">
-                <MapPin className="w-3.5 h-3.5" />
+          <div className="rounded-2xl sm:rounded-3xl bg-forest-950 text-cream p-5 sm:p-12 border-2 border-gold/40 shadow-2xl relative overflow-hidden">
+            <div className="max-w-2xl mx-auto text-center space-y-2.5 sm:space-y-3 mb-7 sm:mb-10">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-forest-900 border border-gold/40 text-gold text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.14em] sm:tracking-[0.2em]">
+                <MapPin className="w-3.5 h-3.5 shrink-0" />
                 <span>CONTACT US | WASILIANA NASI</span>
               </div>
               <h2 className="text-2xl sm:text-4xl font-serif font-bold text-cream">
@@ -798,30 +800,30 @@ export default function HezlonDigitalProfilePage() {
             </div>
 
             {/* Location & Service Area Cards */}
-            <div className="grid sm:grid-cols-2 gap-5 mb-10">
-              <div className="p-6 rounded-2xl bg-forest-900/90 border border-gold/30 flex items-start gap-4">
-                <div className="w-11 h-11 rounded-xl bg-gold/15 border border-gold/40 text-gold flex items-center justify-center shrink-0">
+            <div className="grid sm:grid-cols-2 gap-4 sm:gap-5 mb-7 sm:mb-10">
+              <div className="p-4 sm:p-6 rounded-2xl bg-forest-900/90 border border-gold/30 flex items-start gap-3.5 sm:gap-4">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gold/15 border border-gold/40 text-gold flex items-center justify-center shrink-0">
                   <MapPin className="w-5 h-5" />
                 </div>
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-widest text-gold">
+                <div className="min-w-0">
+                  <div className="text-[11px] sm:text-xs font-bold uppercase tracking-widest text-gold">
                     {lang === "SW" ? "Mahali Tulipo" : "Location"}
                   </div>
-                  <div className="text-lg font-serif font-bold text-cream mt-1">
+                  <div className="text-base sm:text-lg font-serif font-bold text-cream mt-0.5 sm:mt-1">
                     {locationText}
                   </div>
                 </div>
               </div>
 
-              <div className="p-6 rounded-2xl bg-forest-900/90 border border-gold/30 flex items-start gap-4">
-                <div className="w-11 h-11 rounded-xl bg-gold/15 border border-gold/40 text-gold flex items-center justify-center shrink-0">
+              <div className="p-4 sm:p-6 rounded-2xl bg-forest-900/90 border border-gold/30 flex items-start gap-3.5 sm:gap-4">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gold/15 border border-gold/40 text-gold flex items-center justify-center shrink-0">
                   <Compass className="w-5 h-5" />
                 </div>
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-widest text-gold">
+                <div className="min-w-0">
+                  <div className="text-[11px] sm:text-xs font-bold uppercase tracking-widest text-gold">
                     {lang === "SW" ? "Eneo la Huduma" : "Service Area"}
                   </div>
-                  <div className="text-sm sm:text-base font-semibold text-cream mt-1 leading-relaxed">
+                  <div className="text-xs sm:text-base font-semibold text-cream mt-0.5 sm:mt-1 leading-relaxed">
                     {serviceAreaText}
                   </div>
                 </div>
@@ -830,33 +832,33 @@ export default function HezlonDigitalProfilePage() {
 
             {/* Social Media Destination Buttons */}
             <div className="space-y-4">
-              <div className="text-center text-xs font-bold uppercase tracking-[0.2em] text-gold">
+              <div className="text-center text-[11px] sm:text-xs font-bold uppercase tracking-[0.14em] sm:tracking-[0.2em] text-gold">
                 {lang === "SW"
                   ? "Mitandao ya Kijamii • Social Media"
                   : "Official Social Media Portfolio"}
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-3.5 sm:gap-4">
                 <a
                   href={facebookUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="py-4 px-6 rounded-2xl bg-gold text-forest-950 font-bold text-sm uppercase tracking-wider hover:bg-gold-300 transition shadow-gold-glow flex items-center justify-center gap-3"
+                  className="py-3.5 sm:py-4 px-4 sm:px-6 rounded-2xl bg-gold text-forest-950 font-bold text-xs sm:text-sm uppercase tracking-wider hover:bg-gold-300 transition shadow-gold-glow flex items-center justify-center gap-2.5 sm:gap-3 text-center"
                 >
-                  <Facebook className="w-5 h-5" />
+                  <Facebook className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
                   <span>View Our Work on Facebook</span>
-                  <ExternalLink className="w-4 h-4" />
+                  <ExternalLink className="w-4 h-4 shrink-0" />
                 </a>
 
                 <a
                   href={instagramUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="py-4 px-6 rounded-2xl bg-forest-900 border-2 border-gold text-cream font-bold text-sm uppercase tracking-wider hover:bg-gold hover:text-forest-950 transition flex items-center justify-center gap-3"
+                  className="py-3.5 sm:py-4 px-4 sm:px-6 rounded-2xl bg-forest-900 border-2 border-gold text-cream font-bold text-xs sm:text-sm uppercase tracking-wider hover:bg-gold hover:text-forest-950 transition flex items-center justify-center gap-2.5 sm:gap-3 text-center"
                 >
-                  <Instagram className="w-5 h-5" />
+                  <Instagram className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
                   <span>View Our Work on Instagram</span>
-                  <ExternalLink className="w-4 h-4" />
+                  <ExternalLink className="w-4 h-4 shrink-0" />
                 </a>
               </div>
             </div>
@@ -867,21 +869,21 @@ export default function HezlonDigitalProfilePage() {
       {/* ================================================================= */}
       {/* 7. FOOTER                                                         */}
       {/* ================================================================= */}
-      <footer className="bg-forest-950 text-cream border-t border-gold/30 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3.5 text-center sm:text-left">
-            <div className="w-10 h-10 rounded-xl bg-forest-900 border border-gold flex items-center justify-center font-serif font-bold text-lg text-gold">
+      <footer className="bg-forest-950 text-cream border-t border-gold/30 py-10 sm:py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-5 sm:gap-6">
+          <div className="flex items-center gap-3 text-left">
+            <div className="w-10 h-10 rounded-xl bg-forest-900 border border-gold flex items-center justify-center font-serif font-bold text-lg text-gold shrink-0">
               H
             </div>
             <div>
-              <div className="font-serif font-bold text-base text-cream">
+              <div className="font-serif font-bold text-sm sm:text-base text-cream">
                 {companyName}
               </div>
               <div className="text-xs text-gold">{professionalTitle}</div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             <a
               href={facebookUrl}
               target="_blank"
@@ -889,7 +891,7 @@ export default function HezlonDigitalProfilePage() {
               aria-label="View Our Work on Facebook"
               className="px-3.5 py-2 rounded-xl bg-forest-900 border border-gold/30 text-xs font-semibold text-cream hover:border-gold hover:text-gold transition flex items-center gap-2"
             >
-              <Facebook className="w-4 h-4 text-gold" />
+              <Facebook className="w-4 h-4 text-gold shrink-0" />
               <span>Facebook</span>
             </a>
             <a
@@ -899,7 +901,7 @@ export default function HezlonDigitalProfilePage() {
               aria-label="View Our Work on Instagram"
               className="px-3.5 py-2 rounded-xl bg-forest-900 border border-gold/30 text-xs font-semibold text-cream hover:border-gold hover:text-gold transition flex items-center gap-2"
             >
-              <Instagram className="w-4 h-4 text-gold" />
+              <Instagram className="w-4 h-4 text-gold shrink-0" />
               <span>Instagram</span>
             </a>
           </div>
