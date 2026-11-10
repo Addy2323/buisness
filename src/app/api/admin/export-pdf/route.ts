@@ -14,6 +14,17 @@ import {
   validateCardForPrint,
 } from "@/lib/print-engine";
 
+function parseJsonWithFallback<T>(raw: any, fallback: T): T {
+  if (!raw) return fallback;
+  if (typeof raw === "object") return raw as T;
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return (parsed ?? fallback) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const session = await requireAdminApi(req);
   if (!session) {
@@ -21,7 +32,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { searchParams } = new URL(req.url);
+    const searchParams = req.nextUrl.searchParams;
     const designId = searchParams.get("designId");
     const orderId = searchParams.get("orderId");
     const format = (searchParams.get("format") || "PDF_PRINT_READY") as
@@ -52,6 +63,7 @@ export async function GET(req: NextRequest) {
       qrConfig?.slug
     );
 
+    const defaultTpl = HEZLON_TEMPLATES[0];
     let spec: CardPrintSpec;
 
     if (orderId) {
@@ -62,21 +74,21 @@ export async function GET(req: NextRequest) {
       if (!order) {
         return NextResponse.json({ error: "Print order not found" }, { status: 404 });
       }
-      const snapshot = JSON.parse(order.designSnapshotJson || "{}");
+      const snapshot = parseJsonWithFallback<any>(order.designSnapshotJson, {});
       const d = order.design;
       spec = {
-        designName: order.designNameSnapshot,
-        widthMm: order.widthMm,
-        heightMm: order.heightMm,
-        bleedMm: order.bleedMm,
-        safeMarginMm: order.safeMarginMm,
-        isDoubleSided: order.isDoubleSided,
-        paperFinish: order.paperFinish,
-        cornerStyle: order.cornerStyle,
-        frontBg: snapshot.frontBg || (d ? JSON.parse(d.frontBgJson) : { type: "solid", primaryColor: "#0D2B22" }),
-        backBg: snapshot.backBg || (d ? JSON.parse(d.backBgJson) : { type: "solid", primaryColor: "#F8F5EE" }),
-        frontElements: snapshot.frontElements || (d ? JSON.parse(d.frontElementsJson) : []),
-        backElements: snapshot.backElements || (d ? JSON.parse(d.backElementsJson) : []),
+        designName: order.designNameSnapshot || "HEZLON Business Card",
+        widthMm: Number(order.widthMm) || 90,
+        heightMm: Number(order.heightMm) || 50,
+        bleedMm: order.bleedMm !== undefined && order.bleedMm !== null ? Number(order.bleedMm) : 3,
+        safeMarginMm: order.safeMarginMm !== undefined && order.safeMarginMm !== null ? Number(order.safeMarginMm) : 5,
+        isDoubleSided: order.isDoubleSided !== false,
+        paperFinish: order.paperFinish || "MATTE",
+        cornerStyle: order.cornerStyle || "SQUARE",
+        frontBg: snapshot.frontBg || parseJsonWithFallback(d?.frontBgJson, defaultTpl.frontBg),
+        backBg: snapshot.backBg || parseJsonWithFallback(d?.backBgJson, defaultTpl.backBg),
+        frontElements: snapshot.frontElements || parseJsonWithFallback(d?.frontElementsJson, defaultTpl.frontElements),
+        backElements: snapshot.backElements || parseJsonWithFallback(d?.backElementsJson, defaultTpl.backElements),
         qrDestinationUrl,
       };
     } else {
@@ -86,41 +98,40 @@ export async function GET(req: NextRequest) {
 
       if (d) {
         spec = {
-          designName: d.name,
-          widthMm: d.widthMm,
-          heightMm: d.heightMm,
-          bleedMm: d.bleedMm,
-          safeMarginMm: d.safeMarginMm,
-          isDoubleSided: d.isDoubleSided,
-          paperFinish: d.paperFinish,
-          cornerStyle: d.cornerStyle,
-          frontBg: JSON.parse(d.frontBgJson),
-          backBg: JSON.parse(d.backBgJson),
-          frontElements: JSON.parse(d.frontElementsJson),
-          backElements: JSON.parse(d.backElementsJson),
+          designName: d.name || defaultTpl.name,
+          widthMm: Number(d.widthMm) || 90,
+          heightMm: Number(d.heightMm) || 50,
+          bleedMm: d.bleedMm !== undefined && d.bleedMm !== null ? Number(d.bleedMm) : 3,
+          safeMarginMm: d.safeMarginMm !== undefined && d.safeMarginMm !== null ? Number(d.safeMarginMm) : 5,
+          isDoubleSided: d.isDoubleSided !== false,
+          paperFinish: d.paperFinish || "MATTE",
+          cornerStyle: d.cornerStyle || "SQUARE",
+          frontBg: parseJsonWithFallback(d.frontBgJson, defaultTpl.frontBg),
+          backBg: parseJsonWithFallback(d.backBgJson, defaultTpl.backBg),
+          frontElements: parseJsonWithFallback(d.frontElementsJson, defaultTpl.frontElements),
+          backElements: parseJsonWithFallback(d.backElementsJson, defaultTpl.backElements),
           qrDestinationUrl,
         };
       } else {
-        const tpl = HEZLON_TEMPLATES[0];
         spec = {
-          designName: tpl.name,
+          designName: defaultTpl.name,
           widthMm: 90,
           heightMm: 50,
           bleedMm: 3,
           safeMarginMm: 5,
           isDoubleSided: true,
-          paperFinish: tpl.paperFinish,
-          cornerStyle: tpl.cornerStyle,
-          frontBg: tpl.frontBg,
-          backBg: tpl.backBg,
-          frontElements: tpl.frontElements,
-          backElements: tpl.backElements,
+          paperFinish: defaultTpl.paperFinish,
+          cornerStyle: defaultTpl.cornerStyle,
+          frontBg: defaultTpl.frontBg,
+          backBg: defaultTpl.backBg,
+          frontElements: defaultTpl.frontElements,
+          backElements: defaultTpl.backElements,
           qrDestinationUrl,
         };
       }
     }
 
-    const cleanFileName = spec.designName
+    const cleanFileName = (spec.designName || "hezlon-card")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
@@ -170,7 +181,10 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error("GET Print export error:", error);
     return NextResponse.json(
-      { error: "Failed to generate print document" },
+      {
+        error: "Failed to generate print document",
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }
@@ -213,6 +227,7 @@ export async function POST(req: NextRequest) {
       qrConfig?.slug
     );
 
+    const defaultTpl = HEZLON_TEMPLATES[0];
     let spec: CardPrintSpec;
 
     if (body.orderId) {
@@ -226,25 +241,21 @@ export async function POST(req: NextRequest) {
           { status: 404 }
         );
       }
-      const snapshot = JSON.parse(order.designSnapshotJson || "{}");
+      const snapshot = parseJsonWithFallback<any>(order.designSnapshotJson, {});
       const d = order.design;
       spec = {
-        designName: order.designNameSnapshot,
-        widthMm: order.widthMm,
-        heightMm: order.heightMm,
-        bleedMm: order.bleedMm,
-        safeMarginMm: order.safeMarginMm,
-        isDoubleSided: order.isDoubleSided,
-        paperFinish: order.paperFinish,
-        cornerStyle: order.cornerStyle,
-        frontBg:
-          snapshot.frontBg || (d ? JSON.parse(d.frontBgJson) : { type: "solid", primaryColor: "#0D2B22" }),
-        backBg:
-          snapshot.backBg || (d ? JSON.parse(d.backBgJson) : { type: "solid", primaryColor: "#F8F5EE" }),
-        frontElements:
-          snapshot.frontElements || (d ? JSON.parse(d.frontElementsJson) : []),
-        backElements:
-          snapshot.backElements || (d ? JSON.parse(d.backElementsJson) : []),
+        designName: order.designNameSnapshot || defaultTpl.name,
+        widthMm: Number(order.widthMm) || 90,
+        heightMm: Number(order.heightMm) || 50,
+        bleedMm: order.bleedMm !== undefined && order.bleedMm !== null ? Number(order.bleedMm) : 3,
+        safeMarginMm: order.safeMarginMm !== undefined && order.safeMarginMm !== null ? Number(order.safeMarginMm) : 5,
+        isDoubleSided: order.isDoubleSided !== false,
+        paperFinish: order.paperFinish || "MATTE",
+        cornerStyle: order.cornerStyle || "SQUARE",
+        frontBg: snapshot.frontBg || parseJsonWithFallback(d?.frontBgJson, defaultTpl.frontBg),
+        backBg: snapshot.backBg || parseJsonWithFallback(d?.backBgJson, defaultTpl.backBg),
+        frontElements: snapshot.frontElements || parseJsonWithFallback(d?.frontElementsJson, defaultTpl.frontElements),
+        backElements: snapshot.backElements || parseJsonWithFallback(d?.backElementsJson, defaultTpl.backElements),
         qrDestinationUrl,
       };
     } else if (body.designId && !body.frontElements) {
@@ -258,35 +269,34 @@ export async function POST(req: NextRequest) {
         );
       }
       spec = {
-        designName: d.name,
-        widthMm: d.widthMm,
-        heightMm: d.heightMm,
-        bleedMm: d.bleedMm,
-        safeMarginMm: d.safeMarginMm,
-        isDoubleSided: d.isDoubleSided,
-        paperFinish: d.paperFinish,
-        cornerStyle: d.cornerStyle,
-        frontBg: JSON.parse(d.frontBgJson),
-        backBg: JSON.parse(d.backBgJson),
-        frontElements: JSON.parse(d.frontElementsJson),
-        backElements: JSON.parse(d.backElementsJson),
+        designName: d.name || defaultTpl.name,
+        widthMm: Number(d.widthMm) || 90,
+        heightMm: Number(d.heightMm) || 50,
+        bleedMm: d.bleedMm !== undefined && d.bleedMm !== null ? Number(d.bleedMm) : 3,
+        safeMarginMm: d.safeMarginMm !== undefined && d.safeMarginMm !== null ? Number(d.safeMarginMm) : 5,
+        isDoubleSided: d.isDoubleSided !== false,
+        paperFinish: d.paperFinish || "MATTE",
+        cornerStyle: d.cornerStyle || "SQUARE",
+        frontBg: parseJsonWithFallback(d.frontBgJson, defaultTpl.frontBg),
+        backBg: parseJsonWithFallback(d.backBgJson, defaultTpl.backBg),
+        frontElements: parseJsonWithFallback(d.frontElementsJson, defaultTpl.frontElements),
+        backElements: parseJsonWithFallback(d.backElementsJson, defaultTpl.backElements),
         qrDestinationUrl,
       };
     } else {
       spec = {
-        designName: body.designName || "HEZLON Business Card",
+        designName: body.designName || defaultTpl.name,
         widthMm: Number(body.widthMm) || 90,
         heightMm: Number(body.heightMm) || 50,
-        bleedMm: body.bleedMm !== undefined ? Number(body.bleedMm) : 3,
-        safeMarginMm:
-          body.safeMarginMm !== undefined ? Number(body.safeMarginMm) : 5,
+        bleedMm: body.bleedMm !== undefined && body.bleedMm !== null ? Number(body.bleedMm) : 3,
+        safeMarginMm: body.safeMarginMm !== undefined && body.safeMarginMm !== null ? Number(body.safeMarginMm) : 5,
         isDoubleSided: body.isDoubleSided !== false,
         paperFinish: body.paperFinish || "MATTE",
         cornerStyle: body.cornerStyle || "SQUARE",
-        frontBg: body.frontBg || { type: "solid", primaryColor: "#0D2B22" },
-        backBg: body.backBg || { type: "solid", primaryColor: "#F8F5EE" },
-        frontElements: body.frontElements || [],
-        backElements: body.backElements || [],
+        frontBg: body.frontBg || defaultTpl.frontBg,
+        backBg: body.backBg || defaultTpl.backBg,
+        frontElements: Array.isArray(body.frontElements) ? body.frontElements : defaultTpl.frontElements,
+        backElements: Array.isArray(body.backElements) ? body.backElements : defaultTpl.backElements,
         qrDestinationUrl,
       };
     }
@@ -395,7 +405,10 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Print export error:", error);
     return NextResponse.json(
-      { error: "Failed to generate print-ready production file" },
+      {
+        error: "Failed to generate print-ready production file",
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }

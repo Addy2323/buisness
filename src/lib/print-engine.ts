@@ -515,10 +515,13 @@ export async function renderCardSideSvg(
     backElements: normalizeSignatureQrElements(rawSpec.backElements || []),
   };
 
-  const bg = side === "FRONT" ? spec.frontBg : spec.backBg;
-  const elements = (side === "FRONT" ? spec.frontElements : spec.backElements)
-    .filter((e) => !e.hidden)
-    .sort((a, b) => a.zIndex - b.zIndex);
+  const defaultBg: CardBackground = { type: "solid", primaryColor: "#0D2B22" };
+  const rawBg = side === "FRONT" ? spec.frontBg : spec.backBg;
+  const bg: CardBackground = rawBg && typeof rawBg === "object" ? rawBg : defaultBg;
+  const rawElements = side === "FRONT" ? spec.frontElements : spec.backElements;
+  const elements = (Array.isArray(rawElements) ? rawElements : [])
+    .filter((e) => e && !e.hidden)
+    .sort((a, b) => (a?.zIndex || 0) - (b?.zIndex || 0));
 
   const bleed = includeBleedAndMarks ? spec.bleedMm : 0;
   const collar = includeBleedAndMarks ? 5 : 0;
@@ -910,7 +913,7 @@ async function preparePdfResources(
 
   // Pre-embed background images (with edge-extended bleed when bleedMmForBg > 0)
   for (const bg of [spec.frontBg, spec.backBg]) {
-    if (bg?.backgroundImageUrl) {
+    if (bg && typeof bg === "object" && bg.backgroundImageUrl) {
       const cacheKey = `${bg.backgroundImageUrl}::bleed=${bleedMmForBg}`;
       if (!imageCache.has(cacheKey)) {
         const rawBuf = await resolveImageBuffer(bg.backgroundImageUrl);
@@ -933,8 +936,12 @@ async function preparePdfResources(
   }
 
   // Pre-embed element logo/photo images (normalized to PNG via sharp for universal support)
-  for (const el of [...spec.frontElements, ...spec.backElements]) {
-    if ((el.type === "logo" || el.type === "photo") && el.imageUrl) {
+  const allElements = [
+    ...(Array.isArray(spec.frontElements) ? spec.frontElements : []),
+    ...(Array.isArray(spec.backElements) ? spec.backElements : []),
+  ];
+  for (const el of allElements) {
+    if (el && (el.type === "logo" || el.type === "photo") && el.imageUrl) {
       if (!imageCache.has(el.imageUrl)) {
         const rawBuf = await resolveImageBuffer(el.imageUrl);
         if (rawBuf) {
@@ -974,10 +981,13 @@ function drawCardArtworkOnPage(
   bleedMm: number,
   res: EmbeddedPdfResources
 ) {
-  const bg = side === "FRONT" ? spec.frontBg : spec.backBg;
-  const elements = (side === "FRONT" ? spec.frontElements : spec.backElements)
-    .filter((e) => !e.hidden)
-    .sort((a, b) => a.zIndex - b.zIndex);
+  const defaultBg: CardBackground = { type: "solid", primaryColor: "#0D2B22" };
+  const rawBg = side === "FRONT" ? spec.frontBg : spec.backBg;
+  const bg: CardBackground = rawBg && typeof rawBg === "object" ? rawBg : defaultBg;
+  const rawElements = side === "FRONT" ? spec.frontElements : spec.backElements;
+  const elements = (Array.isArray(rawElements) ? rawElements : [])
+    .filter((e) => e && !e.hidden)
+    .sort((a, b) => (a?.zIndex || 0) - (b?.zIndex || 0));
 
   const trimWidthPt = spec.widthMm * MM_TO_PT;
   const trimHeightPt = spec.heightMm * MM_TO_PT;
