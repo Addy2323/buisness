@@ -1,4 +1,4 @@
-import { CardTemplateData } from "@/types/studio";
+import { CanvasElement, CardTemplateData } from "@/types/studio";
 
 export const HEZLON_TEMPLATES: CardTemplateData[] = [
   // 0A. Flagship Exact Master — HEZLON Chevron Medallion & Service Matrix (Uploaded Reference Card)
@@ -241,10 +241,10 @@ export const HEZLON_TEMPLATES: CardTemplateData[] = [
         id: "hcmm-b-qr",
         type: "qr",
         label: "Permanent Profile QR",
-        xMm: 45.9,
-        yMm: 8.1,
-        widthMm: 14.0,
-        heightMm: 14.0,
+        xMm: 45.35,
+        yMm: 7.55,
+        widthMm: 15.1,
+        heightMm: 15.1,
         rotation: 0,
         zIndex: 4,
         qrForeground: "#111111",
@@ -394,10 +394,10 @@ export const HEZLON_TEMPLATES: CardTemplateData[] = [
         id: "hrwa-b-qr",
         type: "qr",
         label: "Permanent Profile QR",
-        xMm: 7.3,
-        yMm: 14.2,
-        widthMm: 15.6,
-        heightMm: 15.6,
+        xMm: 6.25,
+        yMm: 13.2,
+        widthMm: 17.7,
+        heightMm: 17.7,
         rotation: 0,
         zIndex: 4,
         qrForeground: "#111111",
@@ -507,10 +507,10 @@ export const HEZLON_TEMPLATES: CardTemplateData[] = [
         id: "hipv-b-qr",
         type: "qr",
         label: "Permanent Profile QR",
-        xMm: 45.9,
-        yMm: 8.1,
-        widthMm: 14.0,
-        heightMm: 14.0,
+        xMm: 45.35,
+        yMm: 7.55,
+        widthMm: 15.1,
+        heightMm: 15.1,
         rotation: 0,
         zIndex: 4,
         qrForeground: "#111111",
@@ -640,10 +640,10 @@ export const HEZLON_TEMPLATES: CardTemplateData[] = [
         id: "heps-b-qr",
         type: "qr",
         label: "Permanent Profile QR",
-        xMm: 7.3,
-        yMm: 14.2,
-        widthMm: 15.6,
-        heightMm: 15.6,
+        xMm: 6.25,
+        yMm: 13.2,
+        widthMm: 17.7,
+        heightMm: 17.7,
         rotation: 0,
         zIndex: 4,
         qrForeground: "#111111",
@@ -4359,3 +4359,43 @@ export const TEMPLATE_CATEGORIES = [
   "Elegant Professional",
   "Creative Corporate",
 ] as const;
+
+const SIGNATURE_QR_COORDS: Record<
+  string,
+  { xMm: number; yMm: number; widthMm: number; heightMm: number }
+> = {
+  "heps-b-qr": { xMm: 6.25, yMm: 13.2, widthMm: 17.7, heightMm: 17.7 },
+  "hrwa-b-qr": { xMm: 6.25, yMm: 13.2, widthMm: 17.7, heightMm: 17.7 },
+  "hcmm-b-qr": { xMm: 45.35, yMm: 7.55, widthMm: 15.1, heightMm: 15.1 },
+  "hipv-b-qr": { xMm: 45.35, yMm: 7.55, widthMm: 15.1, heightMm: 15.1 },
+};
+
+/**
+ * Ensures any saved signature card design with legacy QR coordinates
+ * automatically snaps to the exact square gold-framed QR box on load.
+ */
+export function normalizeSignatureQrElements(
+  elements: CanvasElement[]
+): CanvasElement[] {
+  if (!Array.isArray(elements)) return [];
+  return elements.map((el) => {
+    if (el.type === "qr" && el.id && SIGNATURE_QR_COORDS[el.id]) {
+      const target = SIGNATURE_QR_COORDS[el.id];
+      const isLegacy =
+        Math.abs(el.widthMm - 15.8) < 0.25 ||
+        Math.abs(el.widthMm - 15.6) < 0.25 ||
+        Math.abs(el.widthMm - 14.9) < 0.25 ||
+        Math.abs(el.widthMm - 14.0) < 0.25 ||
+        Math.abs(el.widthMm - 13.4) < 0.25;
+      if (isLegacy) {
+        return {
+          ...el,
+          ...target,
+          qrFrameStyle: "none",
+          qrIncludeLogo: false,
+        };
+      }
+    }
+    return el;
+  });
+}

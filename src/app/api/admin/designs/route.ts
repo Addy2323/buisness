@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { logAuditEvent, requireAdminApi } from "@/lib/auth";
 import { validateCardForPrint } from "@/lib/print-engine";
+import { normalizeSignatureQrElements } from "@/lib/templates-catalog";
 
 const saveDesignSchema = z.object({
   id: z.string().optional(),
@@ -45,8 +46,12 @@ export async function GET(req: NextRequest) {
         ...design,
         frontBg: JSON.parse(design.frontBgJson || "{}"),
         backBg: JSON.parse(design.backBgJson || "{}"),
-        frontElements: JSON.parse(design.frontElementsJson || "[]"),
-        backElements: JSON.parse(design.backElementsJson || "[]"),
+        frontElements: normalizeSignatureQrElements(
+          JSON.parse(design.frontElementsJson || "[]")
+        ),
+        backElements: normalizeSignatureQrElements(
+          JSON.parse(design.backElementsJson || "[]")
+        ),
         lastValidation: JSON.parse(design.lastValidationJson || "{}"),
       },
     });
@@ -60,8 +65,12 @@ export async function GET(req: NextRequest) {
     ...d,
     frontBg: JSON.parse(d.frontBgJson || "{}"),
     backBg: JSON.parse(d.backBgJson || "{}"),
-    frontElements: JSON.parse(d.frontElementsJson || "[]"),
-    backElements: JSON.parse(d.backElementsJson || "[]"),
+    frontElements: normalizeSignatureQrElements(
+      JSON.parse(d.frontElementsJson || "[]")
+    ),
+    backElements: normalizeSignatureQrElements(
+      JSON.parse(d.backElementsJson || "[]")
+    ),
     lastValidation: JSON.parse(d.lastValidationJson || "{}"),
   }));
 

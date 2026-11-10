@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdminApi } from "@/lib/auth";
-import { HEZLON_TEMPLATES } from "@/lib/templates-catalog";
+import {
+  HEZLON_TEMPLATES,
+  normalizeSignatureQrElements,
+} from "@/lib/templates-catalog";
 
 export async function GET(req: NextRequest) {
   const session = await requireAdminApi(req);
@@ -30,8 +33,12 @@ export async function GET(req: NextRequest) {
       isFeatured: t.isFeatured,
       frontBg: JSON.parse(t.frontBgJson),
       backBg: JSON.parse(t.backBgJson),
-      frontElements: JSON.parse(t.frontElementsJson),
-      backElements: JSON.parse(t.backElementsJson),
+      frontElements: normalizeSignatureQrElements(
+        JSON.parse(t.frontElementsJson)
+      ),
+      backElements: normalizeSignatureQrElements(
+        JSON.parse(t.backElementsJson)
+      ),
     }));
     return NextResponse.json({ templates: formatted });
   }
