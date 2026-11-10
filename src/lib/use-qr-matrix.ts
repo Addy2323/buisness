@@ -1,43 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import QRCode from "qrcode";
+import { buildQrMatrix, QrMatrix } from "./qr-matrix";
 
-/**
- * Real, scannable QR matrix generated with the `qrcode` library
- * (Level H error correction). Used by every on-screen card renderer so the
- * QR shown in the studio is identical to the one exported for printing.
- */
-export interface QrMatrix {
-  url: string;
-  size: number;
-  /** SVG path ("M x y h1 v1 h-1 z ...") covering every dark module. */
-  path: string;
-  isDark: (row: number, col: number) => boolean;
-}
-
-const matrixCache = new Map<string, QrMatrix>();
-
-export function buildQrMatrix(url: string): QrMatrix {
-  const cached = matrixCache.get(url);
-  if (cached) return cached;
-
-  const qr = QRCode.create(url, { errorCorrectionLevel: "H" });
-  const size = qr.modules.size;
-  const data = qr.modules.data;
-  const isDark = (row: number, col: number) => Boolean(data[row * size + col]);
-
-  let path = "";
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      if (isDark(r, c)) path += `M${c} ${r}h1v1h-1z`;
-    }
-  }
-
-  const matrix: QrMatrix = { url, size, path, isDark };
-  matrixCache.set(url, matrix);
-  return matrix;
-}
+export type { QrMatrix };
+export { buildQrMatrix };
 
 function getInitialBrowserUrl(): string {
   if (typeof window !== "undefined" && window.location?.origin) {

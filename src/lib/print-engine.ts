@@ -10,7 +10,7 @@ import {
   PrintValidationReport,
 } from "@/types/studio";
 import { checkColorContrast } from "./qr-engine";
-import { buildQrMatrix } from "./use-qr-matrix";
+import { buildQrMatrix } from "./qr-matrix";
 import { normalizeSignatureQrElements } from "./templates-catalog";
 
 const MM_TO_PT = 2.83464567;
